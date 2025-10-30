@@ -1,9 +1,24 @@
+/*
+
+Help facilitate communication between our module and other modules on the bus. 
+
+Checks whenever new data is available and send acknowledgements according
+
+The command given to us will be something in this format:
+
+dest id, opcode, address/data
+
+We read all this from the bus and know that the message is meant for us and acknowledge that
+we have received this command. We can then pass the command to the Transaction FSM
+
+*/
+
 module command_port (
     //inputs
     input wire clk,
     input wire rst_n,
     input wire transaction_done,
-    input wire [7:0] noc_opcode,
+    input wire [7:0] opcode,
 
     //outputs
     output wire [3:0] fsm_opcode,
@@ -12,7 +27,7 @@ module command_port (
 );
 reg [1:0] sync_internal, sync_external;
 always @(posedge clk or negedge rst_n) begin 
-    case (noc_opcode)
+    case (opcode)
         8'd2: //write
         8'd3: //read
         8'h20: //sector erase(4KiB)
