@@ -1,18 +1,18 @@
-module noc_interface (
-        //inputs
-        input wire clk,
-        input wire rst_n,
-        input wire internal_in,
-        input wire external_in,
+module command_port (
+    //inputs
+    input wire clk,
+    input wire rst_n,
+    input wire transaction_done,
+    input wire [7:0] noc_opcode,
 
-        //outputs
-        output wire internal_out,
-        output wire external_out,
+    //outputs
+    output wire [3:0] fsm_opcode,
+    output wire [3:0] transaction_length,
+    output wire read_write,
 );
 reg [1:0] sync_internal, sync_external;
-reg [7:0] op_code;
 always @(posedge clk or negedge rst_n) begin 
-    case (op_code)
+    case (noc_opcode)
         8'd2: //write
         8'd3: //read
         8'h20: //sector erase(4KiB)
