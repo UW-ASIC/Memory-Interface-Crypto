@@ -13,9 +13,28 @@ Clock Divider / Shifting FSM is already partially implemented by Ryan
 module spi_controller (
     input wire clk, 
     input wire rst_n,
-    input wire done,
-    input wire [7:0] address, //or [23:0] address
-    input wire [7:0] data
+
+    //---- Transaction FSM connections ----
+    input wire in_start,
+    input wire [15:0] in_num_bytes,
+    output wire out_busy,
+    output wire out_done,
+
+    //Send, MOSI side for write text commands
+    input wire in_tx_valid,
+    input wire [7:0] in_tx_data,
+    output wire out_tx_ready,
+
+    //Recv, MISO side for read key, read text commands
+    input wire out_rx_valid,
+    output wire [7:0] out_rx_data,
+    input wire in_rx_ready,
+
+    //---- SPI flash connections ----
+    output wire out_sclk,
+    output wire out_mosi,
+    input wire in_miso,
+    output wire out_cs_n
 );
     
 endmodule

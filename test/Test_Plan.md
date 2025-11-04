@@ -50,7 +50,6 @@ SPI Controller
     No matter if there is/isn't data on the MISO bit, always shift it in and set MISO valid bit to 1 when 8 bits are received
 
 
-
 Status poller:
 
     always check if transaction completed is less than total transactions and set/unset valid based on if transactioin is completed
