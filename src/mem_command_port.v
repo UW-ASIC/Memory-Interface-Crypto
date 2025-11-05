@@ -35,8 +35,19 @@ module command_port (
     output wire [7:0] out_wr_fsm_data,
     input wire in_wr_fsm_ready,
 
-    input wire in_fsm_don
+    input wire in_fsm_done
 );
+
+wire in_valid;
+wire in_ready;
+wire out_valid;
+wire out_ready;
+
+assign in_valid = in_bus[8];
+assign in_read = in_bus[9];
+
+assign out_bus[8] = out_valid;
+assign out_bus[9] = out_ready;
 
 always @(posedge clk, or negedge rst_n) begin
     

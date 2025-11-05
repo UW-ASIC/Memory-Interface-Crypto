@@ -1,8 +1,6 @@
 Command Port:
 
-Features:
-
-Connected to bus via bus_port[7:0]
+    Connected to bus via bus_port[7:0]
 
     Constantly poll for bus_port[1:0] for op code, bus_port[5:4] and bus_port[5:4] for MEM as source/dest ID
 
@@ -23,7 +21,7 @@ Connected to bus via bus_port[7:0]
 
 Transcation FSM:
 
-Receives data[7:0] from Command Port and activated by start signal
+    Receives data[7:0] from Command Port and activated by start signal
 
     If opcode == RD_KEY or RD_TEXT:
         Prepare corresponding SPI read command, send to SPI controller whenver ready and start controller
