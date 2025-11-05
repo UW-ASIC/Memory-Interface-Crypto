@@ -60,7 +60,6 @@ Purpose: Translate MEM commands into SPI flash operations. Sequences the read/wr
 * 5 – Data Handshake Robustness: Handle stalls on `in_spi_tx_ready` or `in_wr_cp_ready`.
 * 6 – Completion Pulse: Assert done after `in_spi_done`.
 * 7 – Reset Mid-Transaction: FSM returns to idle.
-
 * TODO: Confirm if there should be a difference in behavior between read text and read key, and if so how to determine that
 
 ---
