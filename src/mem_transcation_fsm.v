@@ -29,6 +29,8 @@ module transaction_fsm(
     output wire [7:0] out_wr_cp_data,
     input wire in_wr_cp_ready,
 
+    output wire in_cp_enc_type // 0 - AES, 1 SHA
+
     //----SPI Controller Connections----
     output wire out_spi_start,
     output wire [15:0] out_spi_num_bytes,
@@ -47,7 +49,6 @@ module transaction_fsm(
 
     //---- Status Poller----
     //TODO: determine how status poller should interface with this module
-
 );
 
     

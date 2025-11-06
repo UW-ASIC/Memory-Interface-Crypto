@@ -38,3 +38,21 @@ async def test_project(dut):
 
     # Keep testing the module by changing the input values, waiting for
     # one or more clock cycles, and asserting the expected output values.
+
+async def test_reset(dut): 
+    pass
+
+async def test_rd_key_decode(dut):
+    pass
+
+async def test_wr_res_decode(dut):
+    pass
+
+async def test_invalid_header(dut):
+    pass
+
+async def test_write_to_bus(dut):
+    pass 
+
+async def test_bus_ack_req(dut):
+    pass 
