@@ -12,15 +12,17 @@ module status_poller (
     input  wire        rst_n,
 
     //----Transaction FSM Connections----
-    input  wire [15:0] in_transactions_completed,
-    input  wire [15:0] total_transactions,
+    input wire [7:0] in_total_transfers,
+
+    input wire in_poller_start,
 
     // Ready to launch more work (used by FSM)
-    output wire ready //not ready unless (completed == total)
+    output wire out_ready //not ready unless (completed == total)
 
     // All transactions finished
     output wire all_done_valid   // 1 = completed == total (no more work)
 );
 
+reg[7:0] completed_transfers;
 
 endmodule;
