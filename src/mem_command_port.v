@@ -35,7 +35,8 @@ module command_port (
     output wire [7:0] out_wr_fsm_data,
     input wire in_wr_fsm_ready,
 
-    input wire in_fsm_done
+    input wire in_fsm_done,
+    output wire out_fms_enc_type // 0 - AES, 1 SHA
 );
 
 wire in_valid;

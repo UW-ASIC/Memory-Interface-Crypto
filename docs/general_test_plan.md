@@ -34,6 +34,7 @@ Acknowledgement signaling
 6. Read Data Flow: FSM drives `in_rd_fsm_valid`; Command Port drives `out_bus` for each byte.
 7. Write Data Flow: Input data on bus passed to FSM correctly.
 8. ACK Assertion: When `in_fsm_done == 1`, check acknowledgment behavior.
+9. Encryption Classification: Infer encryption type based on source ID, set 1 bit flag for 
 
 ---
 
@@ -54,13 +55,13 @@ Purpose: Translate MEM commands into SPI flash operations. Sequences the read/wr
 ### Test Cases
 
 1. Reset / Idle: On reset, FSM outputs idle.
-2. RD_KEY Command: Translate to SPI read sequence; verify SPI start.
-3. RD_TEXT Command: Similar to RD_KEY; verify proper data routing to Command Port.
+2. RD_KEY Command: Translate to SPI read sequence; verify SPI start. 
+3. RD_TEXT Command: Similar to RD_KEY; verify proper data routing to Command Port. 
+8. Encryption Type: Based on encryption type set by command port, deteremine transfer length. for - AES: 128 bits (8 bytes) for text and 128/192/256 for key (TBD on how to determine key length)   - SHA: (TBD) for text, no key
 4. WR_RES Command: Translate to SPI write sequence; verify SPI TX.
 5. Data Handshake Robustness: Handle stalls on `in_spi_tx_ready` or `in_wr_cp_ready`.
 6. Completion Pulse: Assert done after `in_spi_done`.
 7. Reset Mid-Transaction: FSM returns to idle.
-TODO: Confirm if there should be a difference in behavior between read text and read key, and if so how to determine that
 
 ---
 
