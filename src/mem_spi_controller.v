@@ -32,9 +32,10 @@ module spi_controller (
 
     //---- SPI flash connections ----
     output wire out_sclk,
-    output wire out_mosi,
-    input wire in_miso,
-    output wire out_cs_n
+    output wire [3:0] out_io,
+    input wire [3:0] in_io,
+    output wire out_cs_n,
+    output wire [3:0] io_ena
 );
     
 endmodule
