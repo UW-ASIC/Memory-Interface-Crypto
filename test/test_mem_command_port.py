@@ -7,52 +7,31 @@ from cocotb.triggers import ClockCycles
 
 
 @cocotb.test()
-async def test_project(dut):
-    dut._log.info("Start")
-
-    # Set the clock period to 10 us (100 KHz)
-    clock = Clock(dut.clk, 10, units="us")
-    cocotb.start_soon(clock.start())
-
-    # Reset
-    dut._log.info("Reset")
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
-
-    dut._log.info("Test project behavior")
-
-    # Set the input values you want to test
-    dut.ui_in.value = 20
-    dut.uio_in.value = 30
-
-    # Wait for one clock cycle to see the output values
-    await ClockCycles(dut.clk, 1)
-
-    # The following assersion is just an example of how to check the output values.
-    # Change it to match the actual expected output of your module:
-    assert dut.uo_out.value == 50
-
-    # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
-
 async def test_reset(dut): 
     pass
 
+@cocotb.test()
 async def test_rd_key_decode(dut):
+    # Not applicable for SHA, for AES expect to take in a 256 bit key
     pass
 
+async def test_rd_text_decode(dut):
+    # Depending on the source ID, for AES *OR* 512 bytes (padded/unpadded) for SHA 
+    pass
+
+@cocotb.test()
 async def test_wr_res_decode(dut):
+    # based on the source ID this should: write out in 128 bits for AES *OR* 256 bits for SHA
     pass
 
+@cocotb.test()
 async def test_invalid_header(dut):
     pass
 
+@cocotb.test()
 async def test_write_to_bus(dut):
     pass 
 
-async def test_bus_ack_req(dut):
+@cocotb.test()
+async def test_fsm_handshake(dut):
     pass 

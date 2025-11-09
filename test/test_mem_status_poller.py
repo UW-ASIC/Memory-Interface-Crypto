@@ -7,17 +7,13 @@ from cocotb.triggers import ClockCycles
 
 
 @cocotb.test()
-async def test_reset(dut):
+async def test_reset(dut): 
     pass
 
 @cocotb.test()
-async def test_mosi_output(dut):
+async def test_status_assignment(dut):
     pass
 
 @cocotb.test()
-async def test_miso_input(dut):
-    pass
-
-@cocotb.test()
-async def test_fsm_handshake(dut):
+async def test_status_read(dut):
     pass
