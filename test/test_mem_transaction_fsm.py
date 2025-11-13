@@ -4,12 +4,8 @@
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
-
-async def _reset(dut, cycles=10):
-    dut.rst.value = 0
-    await ClockCycles(dut.clk, cycles)
-    dut.rst.value = 1
-    await ClockCycles(dut.clk, cycles)
+from common import _reset, wait_signal_high
+import common as cm
 
 @cocotb.test()
 async def test_reset(dut): 
@@ -37,7 +33,24 @@ async def test_rd_key_command(dut):
     # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
-    pass
+    await _reset(dut)
+
+    dut.in_cmd_valid.value = 1
+    dut.in_cmd_opcode.value = cm.RD_KEY
+    dut.in_cmd_addr.value = 0xAABBCC
+    
+    dut.in_wr_data_valid = 1
+    dut.in_cmd_data.value = 0xAABBCC
+
+    spi_started = await wait_signal_high(dut, "out_spi_start")
+
+    #TODO: mock interact with spi_controller 
+    # Ensure the length of the transaction is correct
+    # Ensure the data field to command port is correct eat time
+    
+    #do this 16(?) times
+    got_data = await wait_signal_high(dut, 'out_wr_cp_data_valid', timeout_cycles=1500)
+    assert spi_started
 
 @cocotb.test()
 async def test_rd_text_command(dut):
@@ -45,10 +58,18 @@ async def test_rd_text_command(dut):
     # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
-
     await _reset(dut)
 
-    pass
+    dut.in_cmd_valid.value = 1
+    dut.in_cmd_opcode.value = cm.RD_TEXT
+    dut.in_cmd_addr.value = 0xAABBCC
+    
+    dut.in_wr_data_valid = 1
+    dut.in_cmd_data.value = 0xAABBCC
+
+    spi_started = await wait_signal_high(dut, "out_spi_start")
+
+    assert spi_started
 
 @cocotb.test()
 async def test_wr_res_command(dut):
@@ -56,6 +77,17 @@ async def test_wr_res_command(dut):
     # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
+
+    dut.in_cmd_valid.value = 1
+    dut.in_cmd_opcode.value = cm.WR_RES
+    dut.in_cmd_addr.value = 0xAABBCC
+    
+    dut.in_wr_data_valid = 1
+    dut.in_cmd_data.value = 0xAABBCC
+
+    spi_started = await wait_signal_high(dut, "out_spi_start")
+
+    assert spi_started
     pass
 
 @cocotb.test()

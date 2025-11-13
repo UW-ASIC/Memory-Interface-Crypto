@@ -11,11 +11,15 @@ async def test_reset(dut):
     pass
 
 @cocotb.test()
-async def test_mosi_output(dut):
+async def test_command_output(dut):
     pass
 
 @cocotb.test()
-async def test_miso_input(dut):
+async def test_data_input(dut):
+    pass
+
+@cocotb.test()
+async def test_io_enable(dut):
     pass
 
 @cocotb.test()
