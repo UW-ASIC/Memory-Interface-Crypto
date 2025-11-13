@@ -19,7 +19,7 @@ async def test_reset(dut):
     assert dut.out_fsm_data_ready.value == 1, "out_fsm_data_ready should be 1 after reset"
 
     assert dut.out_wr_cp_data_valid.value == 0, "out_wr_cp_data_valid should be 0 after reset"
-    assert dut.in_cp_enc_type.value in (0, 1), "out_wr_cp_enc_type should be 0 or 1 after reset"
+    assert dut.out_wr_cp_enc_type.value in (0, 1), "out_wr_cp_enc_type should be 0 or 1 after reset"
 
     assert dut.out_spi_start.value == 0, "out_spi_start should be 0 after reset"
 
@@ -88,7 +88,6 @@ async def test_wr_res_command(dut):
     spi_started = await wait_signal_high(dut, "out_spi_start")
 
     assert spi_started
-    pass
 
 @cocotb.test()
 async def test_cp_handshake(dut):

@@ -18,8 +18,17 @@ module command_port (
     input wire clk,
     input wire rst_n,
 
-    input wire [9:0] in_bus,
-    output wire [9:0] out_bus,
+    input wire [7:0] in_bus,
+    input wire in_bus_ready,
+    input wire in_bus_valid, 
+    output wire [7:0] out_bus,
+    output wire out_bus_ready,
+    output wire out_bus_valid,
+
+
+    output wire [2:0] out_ack_id,
+    output wire out_ack_req,
+    input wire ack_success,
 
     //----to FSM----
     input wire in_cmd_fsm_ready,
@@ -38,24 +47,6 @@ module command_port (
     input wire in_fsm_done,
     output wire out_fms_enc_type // 0 - AES, 1 SHA
 );
-
-wire in_valid;
-wire in_ready;
-
-assign in_valid = in_bus[8];
-assign in_read = in_bus[9];
-
-wire out_valid;
-wire out_ready;
-
-assign out_bus[8] = out_valid;
-assign out_bus[9] = out_ready;
-
-wire [7:0] in_bus_data;
-wire [7:0] out_bus_data;
-
-assign in_bus_data = in_bus[7:0];
-assign out_bus[7:0] = out_bus_data;
 
 always @(posedge clk, or negedge rst_n) begin
 
