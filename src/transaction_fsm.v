@@ -203,26 +203,19 @@ module transaction_fsm(
 
                 S_LOAD_CMD: begin
                     case(opcode_q)
-                        2'b00: begin
+                        2'b00, 2'b01: begin //RD_KEY / RD_TEXT
                             flash_cmd_byte <= FLASH_READ;
-                            total_bytes <= 16'd6; //cmd + 3 addr + dummy + 1 data
+                            total_bytes <= 16'd6; //cmd + 3 addr + dummy + 1 data (len is counted by status)
                             need_dummy <= 1'b1;
                             need_pre_wren <= 1'b0;
-                            out_spi_r_w <= 1'b1;
+                            out_spi_r_w <= 1'b1; //read
                         end
-                        2'b01: begin
+                        2'b10: begin //WR_RES
                             flash_cmd_byte <= FLASH_PP;
-                            total_bytes <= 16'd5; //cmd + 3 addr + 1 data
-                            need_dummy <= 1'b0; //quad input page program no dummy
-                            need_pre_wren <= 1'b1;
-                            out_spi_r_w <= 1'b0;
-                        end
-                        2'b10: begin
-                            flash_cmd_byte <= FLASH_SE;
-                            total_bytes <= 16'd4; //cmd + 3 addr
+                            total_bytes <= 16'd5; //cmd + 3 addr + 1 data (len is counted by status)
                             need_dummy <= 1'b0;
-                            need_pre_wren <= 1'b1;
-                            out_spi_r_w <= 1'b0;
+                            need_pre_wren <= 1'b1; //WREN before PP
+                            out_spi_r_w <= 1'b0; //write
                         end
                         default: begin
                             flash_cmd_byte <= FLASH_RDSR;
