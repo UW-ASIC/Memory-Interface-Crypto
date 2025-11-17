@@ -32,7 +32,6 @@ async def spi_done(dut):
     await RisingEdge(dut.clk)
     dut.in_spi_done.value = 0
 
-
 async def status_done(dut):
     """Fake status counter completion."""
     dut.in_status_op_done.value = 1
@@ -45,7 +44,7 @@ async def status_done(dut):
 # ----------------------------------------------------------------------
 
 @cocotb.test()
-async def test_reset(dut): 
+async def test_reset(dut):
     # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
@@ -66,8 +65,7 @@ async def test_reset(dut):
 
 @cocotb.test()
 async def test_rd_key_command(dut):
-    # Not applicable for SHA, for AES expect to take in a 256 bit key    
-    # Set the clock period to 10 us (100 KHz)
+    # Not applicable for SHA, for AES expect to take in a 256 bit key
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
     await _reset(dut)
@@ -75,24 +73,21 @@ async def test_rd_key_command(dut):
     dut.in_cmd_valid.value = 1
     dut.in_cmd_opcode.value = cm.RD_KEY
     dut.in_cmd_addr.value = 0xAABBCC
-    
-    dut.in_wr_data_valid = 1
+
+    dut.in_wr_data_valid.value = 1
     dut.in_cmd_data.value = 0xAABBCC
 
     spi_started = await wait_signal_high(dut, "out_spi_start")
 
-    #TODO: mock interact with spi_controller 
-    # Ensure the length of the transaction is correct
-    # Ensure the data field to command port is correct eat time
-    
-    #do this 16(?) times
-    got_data = await wait_signal_high(dut, 'out_wr_cp_data_valid', timeout_cycles=1500)
+    # TODO: once SPI + status are fully modeled, we can also wait for data here.
+    # got_data = await wait_signal_high(dut, 'out_wr_cp_data_valid', timeout_cycles=1500)
+
     assert spi_started
+
 
 @cocotb.test()
 async def test_rd_text_command(dut):
-    # Depending on the source ID, for AES *OR* 512 bytes (padded/unpadded) for SHA 
-    # Set the clock period to 10 us (100 KHz)
+    # Depending on the source ID, for AES or SHA
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
     await _reset(dut)
@@ -100,36 +95,36 @@ async def test_rd_text_command(dut):
     dut.in_cmd_valid.value = 1
     dut.in_cmd_opcode.value = cm.RD_TEXT
     dut.in_cmd_addr.value = 0xAABBCC
-    
-    dut.in_wr_data_valid = 1
+
+    dut.in_wr_data_valid.value = 1
     dut.in_cmd_data.value = 0xAABBCC
 
     spi_started = await wait_signal_high(dut, "out_spi_start")
 
     assert spi_started
 
+
 @cocotb.test()
 async def test_wr_res_command(dut):
-    # Depending on the source ID this should: write out in 128 bits for AES *OR* 256 bits for SHA
-    # Set the clock period to 10 us (100 KHz)
+    # Depending on the source ID this should: write AES or SHA result
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
 
     dut.in_cmd_valid.value = 1
     dut.in_cmd_opcode.value = cm.WR_RES
     dut.in_cmd_addr.value = 0xAABBCC
-    
-    dut.in_wr_data_valid = 1
+
+    dut.in_wr_data_valid.value = 1
     dut.in_cmd_data.value = 0xAABBCC
 
     spi_started = await wait_signal_high(dut, "out_spi_start")
 
     assert spi_started
 
+
 @cocotb.test()
 async def test_cp_handshake(dut):
     """Tests ready assertions when getting data from command port"""
-    # Set the clock period to 10 us (100 KHz)
     await _reset(dut)
 
     # Ensure ready is high before driving a command
@@ -138,19 +133,23 @@ async def test_cp_handshake(dut):
 
     # Drive a single-cycle command request
     dut.in_cmd_valid.value = 1
-    dut.in_cmd_opcode.value = 0b10 #RD_KEY
+    dut.in_cmd_opcode.value = cm.RD_KEY
     dut.in_cmd_addr.value = 0xAABBCC
     await ClockCycles(dut.clk, 2)
     dut.in_cmd_valid.value = 0
 
     assert int(dut.out_fsm_cmd_ready.value) == 0
 
+
 @cocotb.test()
 async def test_spi_controller_handshake(dut):
-    # Set the clock period to 10 us (100 KHz)
+    # Placeholder for more detailed SPI handshake tests
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
-    pass
+    await _reset(dut)
+    # For now, just ensure reset runs without issues
+    assert True
+
 
 # ----------------------------------------------------------------------
 # Kevin's Tests
@@ -176,24 +175,21 @@ async def test_full_read_flow(dut):
     # FSM will send: cmd → addr2 → addr1 → addr0 → dummy → read-data
 
     # accept tx bytes for cmd + addr + dummy
-    await spi_accept_tx(dut, 1) # cmd
-    await spi_accept_tx(dut, 1) # A2
-    await spi_accept_tx(dut, 1) # A1
-    await spi_accept_tx(dut, 1) # A0
-    await spi_accept_tx(dut, 1) # dummy
+    await spi_accept_tx(dut, 1)  # cmd
+    await spi_accept_tx(dut, 1)  # A2
+    await spi_accept_tx(dut, 1)  # A1
+    await spi_accept_tx(dut, 1)  # A0
+    await spi_accept_tx(dut, 1)  # dummy
 
     # now FSM expects RX data
-    await RisingEdge(dut.clk)
-    dut.in_spi_rx_valid.value = 1
-    dut.in_spi_rx_data.value = 0x5A
-    await RisingEdge(dut.clk)
-    dut.in_spi_rx_valid.value = 0
+    await spi_send_rx(dut, 0x5A)
 
     # operation done
     await spi_done(dut)
     await status_done(dut)
 
     assert dut.out_wr_cp_data.value == 0x5A
+
 
 @cocotb.test()
 async def test_full_write_flow(dut):
@@ -210,7 +206,7 @@ async def test_full_write_flow(dut):
 
     # pre-WREN start
     await wait_signal_high(dut, "out_spi_start")
-    await spi_accept_tx(dut, 1) # WREN byte
+    await spi_accept_tx(dut, 1)  # WREN byte
     await spi_done(dut)
 
     # now real Page Program
@@ -225,9 +221,7 @@ async def test_full_write_flow(dut):
     # now FSM asks for write data
     dut.in_wr_data_valid.value = 1
     dut.in_cmd_data.value = 0xAB
-
-    await spi_accept_tx(dut, 1) # send data
-
+    await spi_accept_tx(dut, 1)  # send data
     dut.in_wr_data_valid.value = 0
 
     await spi_done(dut)

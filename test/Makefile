@@ -5,7 +5,7 @@
 SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = project.v
+PROJECT_SOURCES = mem_command_port.v mem_spi_controller.v mem_status_poller.v mem_transaction_fsm.v tt_memory_interface.v
 
 ifneq ($(GATES),yes)
 
@@ -35,10 +35,10 @@ COMPILE_ARGS 		+= -I$(SRC_DIR)
 
 # Include the testbench sources:
 VERILOG_SOURCES += $(PWD)/tb.v
-TOPLEVEL = tb
+TOPLEVEL ?= tb_memory_interface.v
 
 # MODULE is the basename of the Python test file
-MODULE = test
+MODULE ?= test_tt_memory_interface
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
