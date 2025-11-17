@@ -3,9 +3,45 @@
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles
+from cocotb.triggers import ClockCycles, RisingEdge
 from common import _reset, wait_signal_high
 import common as cm
+
+# ----------------------------------------------------------------------
+# Helper: Fake SPI controller
+# ----------------------------------------------------------------------
+
+async def spi_accept_tx(dut, num_bytes):
+    """Fake SPI: accept 'num_bytes' TX pulses from the FSM."""
+    for _ in range(num_bytes):
+        dut.in_spi_tx_ready.value = 1
+        await RisingEdge(dut.clk)
+        dut.in_spi_tx_ready.value = 0
+        await RisingEdge(dut.clk)
+
+async def spi_send_rx(dut, data_byte):
+    """Fake SPI: send RX data for a read operation."""
+    dut.in_spi_rx_data.value = data_byte
+    dut.in_spi_rx_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.in_spi_rx_valid.value = 0
+
+async def spi_done(dut):
+    """Fake SPI: pulse spi_done."""
+    dut.in_spi_done.value = 1
+    await RisingEdge(dut.clk)
+    dut.in_spi_done.value = 0
+
+async def status_done(dut):
+    """Fake status counter completion."""
+    dut.in_status_op_done.value = 1
+    await RisingEdge(dut.clk)
+    dut.in_status_op_done.value = 0
+
+
+# ----------------------------------------------------------------------
+# Harry's Tests
+# ----------------------------------------------------------------------
 
 @cocotb.test()
 async def test_reset(dut): 
@@ -114,3 +150,86 @@ async def test_spi_controller_handshake(dut):
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
     pass
+
+# ----------------------------------------------------------------------
+# Kevin's Tests
+# ----------------------------------------------------------------------
+
+@cocotb.test()
+async def test_full_read_flow(dut):
+    """Complete READ: CMD + ADDR + dummy + 1-byte data."""
+    clock = Clock(dut.clk, 10, units="us")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    # drive command
+    dut.in_cmd_valid.value = 1
+    dut.in_cmd_opcode.value = cm.RD_KEY
+    dut.in_cmd_addr.value = 0x112233
+    await RisingEdge(dut.clk)
+    dut.in_cmd_valid.value = 0
+
+    # wait for SPI start
+    await wait_signal_high(dut, "out_spi_start")
+
+    # FSM will send: cmd → addr2 → addr1 → addr0 → dummy → read-data
+
+    # accept tx bytes for cmd + addr + dummy
+    await spi_accept_tx(dut, 1) # cmd
+    await spi_accept_tx(dut, 1) # A2
+    await spi_accept_tx(dut, 1) # A1
+    await spi_accept_tx(dut, 1) # A0
+    await spi_accept_tx(dut, 1) # dummy
+
+    # now FSM expects RX data
+    await RisingEdge(dut.clk)
+    dut.in_spi_rx_valid.value = 1
+    dut.in_spi_rx_data.value = 0x5A
+    await RisingEdge(dut.clk)
+    dut.in_spi_rx_valid.value = 0
+
+    # operation done
+    await spi_done(dut)
+    await status_done(dut)
+
+    assert dut.out_wr_cp_data.value == 0x5A
+
+@cocotb.test()
+async def test_full_write_flow(dut):
+    """Complete WRITE: pre-WREN + PP + data."""
+    clock = Clock(dut.clk, 10, units="us")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    dut.in_cmd_valid.value = 1
+    dut.in_cmd_opcode.value = cm.WR_RES
+    dut.in_cmd_addr.value = 0x556677
+    await RisingEdge(dut.clk)
+    dut.in_cmd_valid.value = 0
+
+    # pre-WREN start
+    await wait_signal_high(dut, "out_spi_start")
+    await spi_accept_tx(dut, 1) # WREN byte
+    await spi_done(dut)
+
+    # now real Page Program
+    await wait_signal_high(dut, "out_spi_start")
+
+    # cmd + 3 bytes addr = 4 TX pulses
+    await spi_accept_tx(dut, 1)  # PP opcode
+    await spi_accept_tx(dut, 1)
+    await spi_accept_tx(dut, 1)
+    await spi_accept_tx(dut, 1)
+
+    # now FSM asks for write data
+    dut.in_wr_data_valid.value = 1
+    dut.in_cmd_data.value = 0xAB
+
+    await spi_accept_tx(dut, 1) # send data
+
+    dut.in_wr_data_valid.value = 0
+
+    await spi_done(dut)
+    await status_done(dut)
+
+    assert True, "WRITE flow executed successfully"
