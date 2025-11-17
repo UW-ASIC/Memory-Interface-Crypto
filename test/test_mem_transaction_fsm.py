@@ -32,6 +32,7 @@ async def spi_done(dut):
     await RisingEdge(dut.clk)
     dut.in_spi_done.value = 0
 
+
 async def status_done(dut):
     """Fake status counter completion."""
     dut.in_status_op_done.value = 1
