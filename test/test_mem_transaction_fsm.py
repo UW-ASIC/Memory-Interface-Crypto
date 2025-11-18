@@ -3,7 +3,7 @@
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, RisingEdge
+from cocotb.triggers import ClockCycles, RisingEdge, with_timeout
 from common import _reset, wait_signal_high
 import common as cm
 
@@ -76,7 +76,7 @@ async def test_rd_key_command(dut):
     dut.in_cmd_addr.value = 0xAABBCC
     
     dut.in_wr_data_valid = 1
-    dut.in_cmd_data.value = 0xAABBCC
+    dut.in_cmd_data.value = 0xAA
 
     spi_started = await wait_signal_high(dut, "out_spi_start")
 
@@ -84,9 +84,17 @@ async def test_rd_key_command(dut):
     # Ensure the length of the transaction is correct
     # Ensure the data field to command port is correct eat time
     
-    #do this 16(?) times
+    async def wait_handshakes():
+        for _ in range(32): #256 bits
+            await spi_send_rx(dut, 0xFF)
+        
+    receive_complete = await with_timeout(wait_handshakes(), 100, units = "us")
+
     got_data = await wait_signal_high(dut, 'out_wr_cp_data_valid', timeout_cycles=1500)
+
     assert spi_started
+    assert receive_complete
+    assert got_data
 
 @cocotb.test()
 async def test_rd_text_command(dut):
@@ -105,7 +113,17 @@ async def test_rd_text_command(dut):
 
     spi_started = await wait_signal_high(dut, "out_spi_start")
 
+    async def wait_handshakes():
+        for _ in range(16): #128 bits
+            await spi_send_rx(dut, 0xFF)
+        
+    receive_complete = await with_timeout(wait_handshakes(), 100, units = "us")
+
+    got_data = await with_timeout(wait_signal_high(dut, "out_wr_cp_data_valid"), 100, units = "us")
+
     assert spi_started
+    assert receive_complete
+    assert got_data
 
 @cocotb.test()
 async def test_wr_res_command(dut):
