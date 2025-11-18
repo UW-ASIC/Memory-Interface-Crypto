@@ -4,6 +4,8 @@
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
+from common import _reset, wait_signal_high
+import common as cm
 
 
 @cocotb.test()
