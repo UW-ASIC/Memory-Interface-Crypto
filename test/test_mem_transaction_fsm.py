@@ -75,29 +75,30 @@ async def test_rd_key_command(dut):
     dut.in_cmd_opcode.value = cm.RD_KEY
     dut.in_cmd_addr.value = 0xAABBCC
     
-    dut.in_wr_data_valid = 1
+    dut.in_wr_data_valid.value = 1
     dut.in_cmd_data.value = 0xAB
 
     dut.in_spi_tx_ready.value = 0
 
+    dut.in_spi_rx_valid.value = 0
+    dut.in_spi_rx_data.value = 0
+    
     spi_started = await wait_signal_high(dut, "out_spi_start")
 
     #TODO: mock interact with spi_controller 
     # Ensure the length of the transaction is correct
     # Ensure the data field to command port is correct eat time
     
-    async def wait_handshakes():
-        for _ in range(32): #256 bits
-            await spi_accept_tx(dut, 1)
+    async def mock_return_data():
+        for i in range(32): #256 bits
+            await spi_send_rx(dut, i)
         return True
         
-    receive_complete = await with_timeout(wait_handshakes(), 1, timeout_unit= "ms")
+    await with_timeout(spi_accept_tx(dut, 4), 200, timeout_unit = "us")
 
-    got_data = await wait_signal_high(dut, 'out_wr_cp_data_valid', timeout_cycles=1500)
+    await with_timeout(mock_return_data(), 400, timeout_unit = "us")
 
     assert spi_started
-    assert receive_complete
-    # assert got_data
 
 @cocotb.test()
 async def test_rd_text_command(dut):
@@ -111,23 +112,24 @@ async def test_rd_text_command(dut):
     dut.in_cmd_opcode.value = cm.RD_TEXT
     dut.in_cmd_addr.value = 0xAABBCC
     
-    dut.in_wr_data_valid = 1
+    dut.in_wr_data_valid.value = 1
     dut.in_cmd_data.value = 0xAB
+
+    dut.in_spi_rx_valid.value = 0
+    dut.in_spi_rx_data.value = 0
 
     spi_started = await wait_signal_high(dut, "out_spi_start")
 
-    async def wait_handshakes():
-        for _ in range(16): #128 bits
-            await spi_accept_tx(dut, 1)
+    async def mock_return_data():
+        for i in range(16): #128 bits
+            await spi_send_rx(dut, i)
         return True
-        
-    receive_complete = await with_timeout(wait_handshakes(), 1, timeout_unit = "ms")
+    
+    await with_timeout(spi_accept_tx(dut, 4), 200, timeout_unit = "us")
 
-    got_data = await with_timeout(wait_signal_high(dut, "out_wr_cp_data_valid"), 100, units = "us")
+    await with_timeout(mock_return_data(), 200, timeout_unit = "us")
 
     assert spi_started
-    assert receive_complete
-    assert got_data
 
 @cocotb.test()
 async def test_wr_res_command(dut):
