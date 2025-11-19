@@ -69,7 +69,6 @@ async def test_rd_key_command(dut):
     # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
-    await _reset(dut)
 
     dut.in_cmd_valid.value = 1
     dut.in_cmd_opcode.value = cm.RD_KEY
@@ -82,8 +81,15 @@ async def test_rd_key_command(dut):
 
     dut.in_spi_rx_valid.value = 0
     dut.in_spi_rx_data.value = 0
-    
+
+    dut.in_spi_done.value = 0
+
+    await _reset(dut)
+
     spi_started = await wait_signal_high(dut, "out_spi_start")
+
+    await ClockCycles(dut.clk, 10)
+    dut.in_spi_done.value = 1
 
     #TODO: mock interact with spi_controller 
     # Ensure the length of the transaction is correct
@@ -93,8 +99,13 @@ async def test_rd_key_command(dut):
         for i in range(32): #256 bits
             await spi_send_rx(dut, i)
         return True
-        
-    await with_timeout(spi_accept_tx(dut, 4), 200, timeout_unit = "us")
+    
+    for _ in range(7):
+        dut.in_spi_tx_ready.value = 1
+        await RisingEdge(dut.out_spi_tx_valid)
+        dut.in_spi_tx_ready.value = 0
+        await ClockCycles(dut.clk, 1)
+    dut.in_spi_tx_ready.value = 1
 
     await with_timeout(mock_return_data(), 400, timeout_unit = "us")
 
@@ -106,7 +117,6 @@ async def test_rd_text_command(dut):
     # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
-    await _reset(dut)
 
     dut.in_cmd_valid.value = 1
     dut.in_cmd_opcode.value = cm.RD_TEXT
@@ -117,16 +127,26 @@ async def test_rd_text_command(dut):
 
     dut.in_spi_rx_valid.value = 0
     dut.in_spi_rx_data.value = 0
+    
+    await _reset(dut)
 
     spi_started = await wait_signal_high(dut, "out_spi_start")
+
+    await ClockCycles(dut.clk, 10)
+    dut.in_spi_done = 1
 
     async def mock_return_data():
         for i in range(16): #128 bits
             await spi_send_rx(dut, i)
         return True
     
-    await with_timeout(spi_accept_tx(dut, 4), 200, timeout_unit = "us")
-
+    for _ in range(7):
+        dut.in_spi_tx_ready.value = 1
+        await RisingEdge(dut.out_spi_tx_valid)
+        dut.in_spi_tx_ready.value = 0
+        await ClockCycles(dut.clk, 1)
+    dut.in_spi_tx_re
+    
     await with_timeout(mock_return_data(), 200, timeout_unit = "us")
 
     assert spi_started

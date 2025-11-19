@@ -286,7 +286,10 @@ module mem_transaction_fsm(
                 end
 
                 S_SEND_DUMMY: begin
-                    out_spi_dummy <= 1'b1;
+                    if(in_spi_tx_ready) begin
+                        out_spi_tx_valid <= 1'b1;
+                        out_spi_tx_data <= 8'h0;
+                    end
                 end
 
                 S_SEND_WDATA: begin
@@ -408,9 +411,9 @@ module mem_transaction_fsm(
 
             S_SEND_DUMMY: begin
                 //dummy is just 1 slot we tell qspi to insert
-                if(opcode_q == 2'b00) begin
+                if(opcode_q == 2'b00 || opcode_q == 2'b01) begin
                     next_state = S_RECV_DATA;
-                end else if(opcode_q == 2'b01) begin
+                end else if(opcode_q == 2'b10) begin
                     next_state = S_SEND_WDATA;
                 end else begin
                     next_state = S_WAIT_DONE;
