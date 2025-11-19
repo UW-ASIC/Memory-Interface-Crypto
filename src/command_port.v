@@ -251,10 +251,6 @@ module host_cmd_port(
                             endcase
                         end
                     end
-                    else begin
-                        // Set the ready signal low if not reading
-                        out_bus_ready <= 1'b0;
-                    end
 
                 TRANSFER_DATA_BUS_TO_FSM:
                     // Set the cmd port to drive the FSM bus
@@ -265,12 +261,6 @@ module host_cmd_port(
                         // Error: trying to read while driving the bus
                     end
                     else begin
-                        if (bus_valid && out_bus_ready) begin
-                            // Read the data
-                            out_fsm_bus_data <= in_bus_data;
-                            cur_beat <= cur_beat + 1;
-                            out_fsm_valid <= 1'b1;
-                        end
                         // SHA involves reading 256 bits from the bus (256 bits / 8 bits per beat = 32 beats)
                         // AES involves reading 128 bits from the bus (128 bits / 8 bits per beat = 16 beats)
                         if ((source == SHA && cur_beat >= 32) || (source == AES && cur_beat >= 16)) begin
@@ -279,6 +269,12 @@ module host_cmd_port(
                             out_bus_ready <= 1'b0;
                             out_fsm_valid <= 1'b0;
                             ack_state <= SEND_ACK_ACCEL;
+                        end
+                        else if (bus_valid && out_bus_ready) begin
+                            // Read the data
+                            out_fsm_bus_data <= in_bus_data;
+                            cur_beat <= cur_beat + 1;
+                            out_fsm_valid <= 1'b1;
                         end
                     end
 
