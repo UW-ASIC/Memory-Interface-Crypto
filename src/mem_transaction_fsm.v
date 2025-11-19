@@ -4,6 +4,7 @@ module mem_transaction_fsm(
 
     //command port
     input wire in_cmd_valid,
+    input wire in_cmd_enc_type,
     input wire [1:0] in_cmd_opcode,
     input wire [23:0] in_cmd_addr,
     output reg out_fsm_cmd_ready,
@@ -90,6 +91,10 @@ module mem_transaction_fsm(
     localparam S_WAIT_DONE = 5'd20;
     localparam S_FINISH = 5'd21;
 
+    localparam RD_KEY = 2'b00;
+    localparam RD_TEXT = 2'b01;
+    localparam WR_RES = 2'b10;
+
     reg [4:0] state;
     reg [4:0] next_state;
 
@@ -98,6 +103,7 @@ module mem_transaction_fsm(
     reg [23:0] addr_q;
     reg [7:0] flash_cmd_byte;
     reg [15:0] total_bytes;
+    reg [7:0] total_recv_bytes;
     reg need_dummy;
     reg need_pre_wren;
 
@@ -109,6 +115,7 @@ module mem_transaction_fsm(
             addr_q <= 24'h0;
             flash_cmd_byte <= 8'h00;
             total_bytes <= 16'd0;
+            total_recv_bytes <= 16'd0;
             out_fsm_cmd_ready <= 1'b0;
             out_fsm_data_ready <= 1'b0;
             out_wr_cp_data_valid <= 1'b0;
@@ -209,9 +216,14 @@ module mem_transaction_fsm(
 
                 S_LOAD_CMD: begin
                     case(opcode_q)
-                        2'b00, 2'b01: begin //RD_KEY / RD_TEXT
+                        RD_KEY, RD_TEXT: begin //RD_KEY / RD_TEXT
                             flash_cmd_byte <= FLASH_READ;
                             total_bytes <= 16'd6; //cmd + 3 addr + dummy + 1 data (len is counted by status)
+                            if(opcode_q == RD_KEY) total_recv_bytes <= 8'd32;
+                            else begin
+                                if(in_cmd_enc_type == 0) total_recv_bytes <= 8'd8;
+                                else total_recv_bytes <= 8'd64;
+                            end
                             need_dummy <= 1'b1;
                             need_pre_wren <= 1'b0;
                             out_spi_r_w <= 1'b1; //read
@@ -304,6 +316,7 @@ module mem_transaction_fsm(
 
                 S_RECV_DATA: begin
                     out_spi_rx_ready <= 1'b1;
+                    total_recv_bytes <= total_recv_bytes - 1;
 
                     if(in_spi_rx_valid) begin
                         out_wr_cp_data <= in_spi_rx_data;
@@ -399,9 +412,9 @@ module mem_transaction_fsm(
                 if(in_spi_tx_ready) begin
                     if(need_dummy) begin
                         next_state = S_SEND_DUMMY;
-                    end else if(opcode_q == 2'b00) begin
+                    end else if(opcode_q == RD_KEY) begin
                         next_state = S_RECV_DATA;
-                    end else if(opcode_q == 2'b01) begin
+                    end else if(opcode_q == RD_TEXT) begin
                         next_state = S_SEND_WDATA;
                     end else begin
                         next_state = S_WAIT_DONE;
@@ -411,7 +424,7 @@ module mem_transaction_fsm(
 
             S_SEND_DUMMY: begin
                 //dummy is just 1 slot we tell qspi to insert
-                if(opcode_q == 2'b00 || opcode_q == 2'b01) begin
+                if(opcode_q == RD_KEY || opcode_q == RD_TEXT) begin
                     next_state = S_RECV_DATA;
                 end else if(opcode_q == 2'b10) begin
                     next_state = S_SEND_WDATA;
@@ -427,7 +440,7 @@ module mem_transaction_fsm(
             end
 
             S_RECV_DATA: begin
-                if(in_spi_rx_valid) begin
+                if(total_recv_bytes == 0) begin
                     next_state = S_WAIT_DONE;
                 end
             end
