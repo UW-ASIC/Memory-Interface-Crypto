@@ -1,13 +1,13 @@
 /*
 Summary:
 
-- Four states: IDLE, READING_BUS_OP_ADDR, TRANSFER_DATA_BUS_TO_FSM, TRANSFER_DATA_FSM_TO_BUS
+- Four states: IDLE, READING_BUS_OP_ADDR, READING_BUS_DATA, TRANSFER_DATA_FSM_TO_BUS
     - In IDLE, wait for bus_valid and out_bus_ready to be high to start reading command
     - In READING_BUS_OP_ADDR, read 4 beats from the bus to get the command
         - First beat: enc/dec, reserved, dest, source, opcode
         - Next 3 beats: address (24 bits)
-        - Depending on opcode, transition to TRANSFER_DATA_BUS_TO_FSM or TRANSFER_DATA_FSM_TO_BUS
-    - In TRANSFER_DATA_BUS_TO_FSM, read data from bus and send to FSM
+        - Depending on opcode, transition to READING_BUS_DATA or TRANSFER_DATA_FSM_TO_BUS
+    - In READING_BUS_DATA, read data from bus and send to FSM
         - For WR_RES, read 16 or 32 beats depending on source (AES or SHA)
         - After reading all data, transition back to IDLE and send ack to accelerator
     - In TRANSFER_DATA_FSM_TO_BUS, read data from FSM and send to bus
@@ -35,7 +35,7 @@ Summary:
 
 */
 
-module host_cmd_port(
+module host_cmd_port_v2(
     input wire clk,
     input wire rst_n,
 
@@ -50,8 +50,8 @@ module host_cmd_port(
     
     // --- Ack Bus ---
     input wire ack_bus_owned,
-    output wire ack_bus_request,
-    output wire [1:0] ack_bus_id,
+    output reg ack_bus_request,
+    output reg [1:0] ack_bus_id,
 
     // Not needed, but still an input from the status module
     input wire[6:0] status,
@@ -60,12 +60,12 @@ module host_cmd_port(
     input wire txn_done,
     input wire fsm_ready,
     input wire fsm_valid,
-    output wire drive_fsm_bus, // CMD port can drive the FSM bus when drive_fsm_bus is high
+    output reg drive_fsm_bus, // CMD port can drive the FSM bus when drive_fsm_bus is high
     input wire [7:0] in_fsm_bus_data,
     output reg out_fsm_ready,
     
     // data buffered for fsm
-    output reg [256:0] out_fsm_data,
+    output reg [255:0] out_fsm_data,
     output reg out_fsm_valid,
 
     // --- outputs ---
@@ -81,7 +81,7 @@ module host_cmd_port(
     
     // --- Address: goes to qspi ---
     output reg address_valid,
-    output reg[23:0] address,
+    output reg[23:0] address
 );
 
     // States
@@ -113,8 +113,8 @@ module host_cmd_port(
     reg [5:0] cur_beat;
 
     // Opcode information
-    wire enc_dec;
-    wire reserved;
+    reg enc_dec;
+    reg reserved;
     reg [1:0] dest;
     reg [1:0] source;
     reg [1:0] noc_opcode;
@@ -150,7 +150,7 @@ module host_cmd_port(
             // Reset states and beat
             state <= IDLE;
             ack_state <= IDLE;
-            cur_beat <= 2'b00;
+            cur_beat <= 6'b000000;
             
             // Clear opcode information registers
             dest <= 2'b00;
@@ -163,6 +163,9 @@ module host_cmd_port(
             ena_status <= 1'b1;
             
             drive_fsm_bus <= 1'b0; // Default to not driving the FSM bus
+
+            ack_bus_id <= 2'b00;
+            ack_bus_request <= 1'b0;
         end
         else begin
             // Set the ready signals
@@ -178,7 +181,7 @@ module host_cmd_port(
                     // Polling: Get the next command from NOC if transaction done and if it is valid and fsm bus is ready
                     if (bus_valid && out_bus_ready) begin
                         state <= READING_BUS_OP_ADDR;
-                        cur_beat <= 2'b00;
+                        cur_beat <= 6'b000000;
                     end
 
                 READING_BUS_OP_ADDR:
@@ -201,32 +204,32 @@ module host_cmd_port(
                                     dest <= in_bus_data[5:4];
                                     source <= in_bus_data[3:2];
                                     noc_opcode <= in_bus_data[1:0];
-                                    cur_beat <= 2'b01;
+                                    cur_beat <= 6'b000001;
                                     out_bus_ready <= 1'b1;
                                 end
                                 2'b01: begin
                                     // 1st beat: address
                                     address[7:0] <= in_bus_data[7:0];
-                                    cur_beat <= 2'b10;
+                                    cur_beat <= 6'b000010;
                                     out_bus_ready <= 1'b1;
                                 end
                                 2'b10: begin
                                     // 2nd beat: address
                                     address[15:8] <= in_bus_data[7:0];
-                                    cur_beat <= 2'b11;
+                                    cur_beat <= 6'b000011;
                                     out_bus_ready <= 1'b1;
                                 end
                                 2'b11: begin
                                     // 3rd beat: address
                                     address[23:16] <= in_bus_data[7:0];
                                     address_valid <= 1'b1;
-                                    cur_beat <= 2'b00;
-                                    ack_state <= SEND_ACK_CTRL
+                                    cur_beat <= 6'b000000;
+                                    ack_state <= SEND_ACK_CTRL;
 
                                     // If WR_RES, immediately send values to FSM
                                     // Otherwise, read the data from the bus
                                     if (noc_opcode == WR_RES) begin
-                                        state <= TRANSFER_DATA_BUS_TO_FSM;
+                                        state <= READING_BUS_DATA;
                                         r_w <= 1'b0; // Writing to FSM
                                         ena <= 1'b1;
                                     end
@@ -267,7 +270,7 @@ module host_cmd_port(
                         // AES involves reading 128 bits from the bus (128 bits / 8 bits per beat = 16 beats)
                         if ((source == SHA && cur_beat >= 32) || (source == AES && cur_beat >= 16)) begin
                             state <= IDLE;
-                            cur_beat <= 2'b00;
+                            cur_beat <= 6'b000000;
                             out_bus_ready <= 1'b0;
                             out_fsm_valid <= 1'b1;
                             ack_state <= SEND_ACK_ACCEL;
@@ -300,10 +303,10 @@ module host_cmd_port(
                         // RD_TEXT involves reading 128 bits from the bus (128 bits / 8 bits per beat = 16 beats)
                         if ((noc_opcode == RD_KEY && cur_beat >= 32) || (noc_opcode == RD_TEXT && cur_beat >= 16)) begin
                             state <= IDLE;
-                            cur_beat <= 2'b00;
+                            cur_beat <= 6'b000000;
                             out_fsm_ready <= 1'b0;
                             out_bus_valid <= 1'b0;
-                            state <= RECEIVE_ACK;
+                            ack_state <= RECEIVE_ACK;
                         end
                     end
             endcase
@@ -316,7 +319,7 @@ module host_cmd_port(
                 RECEIVE_ACK:
                     // Wait for ack from ack bus from accelerator
                     // Assert that ack_bus_owned is not memory
-                    if (ack_bus_owned == MEM) begin
+                    if (ack_bus_owned) begin
                         // Error: bus owned by memory controller when expecting ack from accelerator
                         ack_bus_request <= 1'b0;
                     end
@@ -331,7 +334,7 @@ module host_cmd_port(
                 
                 SEND_ACK_ACCEL:
                     // Assert that ack_bus_owned is memory
-                    if (ack_bus_owned != MEM) begin
+                    if (!ack_bus_owned) begin
                         // Error: bus owned by memory controller when expecting ack from accelerator
                     end
                     else begin
@@ -345,7 +348,7 @@ module host_cmd_port(
                 
                 SEND_ACK_CTRL:
                     // Assert that ack_bus_owned is memory
-                    if (ack_bus_owned != MEM) begin
+                    if (!ack_bus_owned) begin
                         // Error: bus owned by memory controller when expecting ack from accelerator
                     end
                     else begin
