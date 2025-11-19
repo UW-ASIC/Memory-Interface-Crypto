@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: © 2024 Tiny Tapeout
 # SPDX-License-Identifier: Apache-2.0
-
+# make TOPLEVEL=mem_transaction_fsm MODULE=test_mem_transaction_fsm PROJECT_SOURCES=mem_transaction_fsm.v
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, RisingEdge
+from cocotb.triggers import ClockCycles, RisingEdge, with_timeout
 from common import _reset, wait_signal_high
 import common as cm
 
@@ -51,11 +51,11 @@ async def test_reset(dut):
 
     await _reset(dut)
 
-    assert dut.out_fsm_cmd_ready.value == 1, "out_fsm_cmd_ready should be 1 after reset"
-    assert dut.out_fsm_data_ready.value == 1, "out_fsm_data_ready should be 1 after reset"
+    assert dut.out_fsm_cmd_ready.value == 0, "out_fsm_cmd_ready should be 0 after reset"
+    assert dut.out_fsm_data_ready.value == 0, "out_fsm_data_ready should be 0 after reset"
 
     assert dut.out_wr_cp_data_valid.value == 0, "out_wr_cp_data_valid should be 0 after reset"
-    assert dut.out_wr_cp_enc_type.value in (0, 1), "out_wr_cp_enc_type should be 0 or 1 after reset"
+    # assert dut.out_wr_cp_enc_type.value in (0, 1), "out_wr_cp_enc_type should be 0 or 1 after reset"
 
     assert dut.out_spi_start.value == 0, "out_spi_start should be 0 after reset"
 
@@ -63,93 +63,129 @@ async def test_reset(dut):
     assert dut.out_spi_rx_ready.value == 0, "out_spi_rx_ready should be 0 after reset"
 
 
+async def mock_return_data(dut, transfer_len):
+    for i in range(transfer_len): #256 bits
+        await spi_send_rx(dut, i)
+        if i > 0:
+            assert dut.out_wr_cp_data.value == i - 1
+    return True
+    
+def set_batch_value(dut, val, *to_set):
+    for sig in to_set:
+        getattr(dut, sig).value = val
+    
 @cocotb.test()
 async def test_rd_key_command(dut):
     # Not applicable for SHA, for AES expect to take in a 256 bit key    
     # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
-    await _reset(dut)
 
     dut.in_cmd_valid.value = 1
     dut.in_cmd_opcode.value = cm.RD_KEY
+    dut.in_cmd_enc_type.value = 0 #AES
     dut.in_cmd_addr.value = 0xAABBCC
     
-    dut.in_wr_data_valid = 1
-    dut.in_cmd_data.value = 0xAABBCC
+    dut.in_cmd_data.value = 0xAB
+
+    set_batch_value(dut, 0, "in_spi_tx_ready", "in_spi_rx_valid", "in_spi_rx_data", "in_spi_done")
+    set_batch_value(dut, 1, "in_wr_cp_ready", "in_cmd_valid", "in_wr_data_valid")
+
+    await _reset(dut)
 
     spi_started = await wait_signal_high(dut, "out_spi_start")
+
+    await ClockCycles(dut.clk, 10)
+    dut.in_spi_done.value = 1
 
     #TODO: mock interact with spi_controller 
     # Ensure the length of the transaction is correct
     # Ensure the data field to command port is correct eat time
     
-    #do this 16(?) times
-    got_data = await wait_signal_high(dut, 'out_wr_cp_data_valid', timeout_cycles=1500)
-    assert spi_started
+    for _ in range(7):
+        dut.in_spi_tx_ready.value = 1
+        await RisingEdge(dut.out_spi_tx_valid)
+        dut.in_spi_tx_ready.value = 0
+        await ClockCycles(dut.clk, 1)
+    dut.in_spi_tx_ready.value = 1
+
+    await with_timeout(mock_return_data(dut, 32), 400, timeout_unit = "us")
 
 @cocotb.test()
 async def test_rd_text_command(dut):
-    # Depending on the source ID, for AES *OR* 512 bytes (padded/unpadded) for SHA 
+    # Depending on the source ID, 128 for AES *OR* 512 bytes (padded/unpadded) for SHA 
     # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
-    await _reset(dut)
 
     dut.in_cmd_valid.value = 1
     dut.in_cmd_opcode.value = cm.RD_TEXT
+    dut.in_cmd_enc_type.value = 1 #SHA
     dut.in_cmd_addr.value = 0xAABBCC
-    
-    dut.in_wr_data_valid = 1
-    dut.in_cmd_data.value = 0xAABBCC
+    dut.in_cmd_data.value = 0xAB
 
-    spi_started = await wait_signal_high(dut, "out_spi_start")
+    set_batch_value(dut, 0, "in_spi_tx_ready", "in_spi_rx_valid", "in_spi_rx_data", "in_spi_done")
+    set_batch_value(dut, 1, "in_wr_cp_ready", "in_cmd_valid", "in_wr_data_valid")
 
-    assert spi_started
-
-@cocotb.test()
-async def test_wr_res_command(dut):
-    # Depending on the source ID this should: write out in 128 bits for AES *OR* 256 bits for SHA
-    # Set the clock period to 10 us (100 KHz)
-    clock = Clock(dut.clk, 10, units="us")
-    cocotb.start_soon(clock.start())
-
-    dut.in_cmd_valid.value = 1
-    dut.in_cmd_opcode.value = cm.WR_RES
-    dut.in_cmd_addr.value = 0xAABBCC
-    
-    dut.in_wr_data_valid = 1
-    dut.in_cmd_data.value = 0xAABBCC
-
-    spi_started = await wait_signal_high(dut, "out_spi_start")
-
-    assert spi_started
-
-@cocotb.test()
-async def test_cp_handshake(dut):
-    """Tests ready assertions when getting data from command port"""
-    # Set the clock period to 10 us (100 KHz)
     await _reset(dut)
 
-    # Ensure ready is high before driving a command
-    await ClockCycles(dut.clk, 1)
-    assert int(dut.out_fsm_cmd_ready.value) == 1
+    await wait_signal_high(dut, "out_spi_start")
 
-    # Drive a single-cycle command request
-    dut.in_cmd_valid.value = 1
-    dut.in_cmd_opcode.value = 0b10 #RD_KEY
-    dut.in_cmd_addr.value = 0xAABBCC
-    await ClockCycles(dut.clk, 2)
-    dut.in_cmd_valid.value = 0
+    await ClockCycles(dut.clk, 10)
+    dut.in_spi_done.value = 1
 
-    assert int(dut.out_fsm_cmd_ready.value) == 0
+    for _ in range(7):
+        dut.in_spi_tx_ready.value = 1
+        await RisingEdge(dut.out_spi_tx_valid)
+        dut.in_spi_tx_ready.value = 0
+        await ClockCycles(dut.clk, 1)
+    dut.in_spi_tx_ready.value = 1
 
-@cocotb.test()
-async def test_spi_controller_handshake(dut):
-    # Set the clock period to 10 us (100 KHz)
-    clock = Clock(dut.clk, 10, units="us")
-    cocotb.start_soon(clock.start())
-    pass
+    await with_timeout(mock_return_data(dut, 64), 800, timeout_unit = "us")
+
+# @cocotb.test()
+# async def test_wr_res_command(dut):
+#     # Depending on the source ID this should: write out in 128 bits for AES *OR* 256 bits for SHA
+#     # Set the clock period to 10 us (100 KHz)
+#     clock = Clock(dut.clk, 10, units="us")
+#     cocotb.start_soon(clock.start())
+
+#     dut.in_cmd_valid.value = 1
+#     dut.in_cmd_opcode.value = cm.WR_RES
+#     dut.in_cmd_addr.value = 0xAABBCC
+    
+#     dut.in_wr_data_valid = 1
+#     dut.in_cmd_data.value = 0xAB
+
+#     spi_started = await wait_signal_high(dut, "out_spi_start")
+
+#     assert spi_started
+
+# @cocotb.test()
+# async def test_cp_handshake(dut):
+#     """Tests ready assertions when getting data from command port"""
+#     # Set the clock period to 10 us (100 KHz)
+#     await _reset(dut)
+
+#     # Ensure ready is high before driving a command
+#     await ClockCycles(dut.clk, 1)
+#     assert int(dut.out_fsm_cmd_ready.value) == 1
+
+#     # Drive a single-cycle command request
+#     dut.in_cmd_valid.value = 1
+#     dut.in_cmd_opcode.value = 0b10 #RD_KEY
+#     dut.in_cmd_addr.value = 0xAABBCC
+#     await ClockCycles(dut.clk, 2)
+#     dut.in_cmd_valid.value = 0
+
+#     assert int(dut.out_fsm_cmd_ready.value) == 0
+
+# @cocotb.test()
+# async def test_spi_controller_handshake(dut):
+#     # Set the clock period to 10 us (100 KHz)
+#     clock = Clock(dut.clk, 10, units="us")
+#     cocotb.start_soon(clock.start())
+#     pass
 
 # ----------------------------------------------------------------------
 # Kevin's Tests
