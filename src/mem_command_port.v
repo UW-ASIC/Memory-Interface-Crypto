@@ -48,9 +48,9 @@ module command_port (
     output wire out_fms_enc_type // 0 - AES, 1 SHA
 );
 
-always @(posedge clk, or negedge rst_n) begin
+// always @(posedge clk, or negedge rst_n) begin
 
-end
+// end
 
 
 endmodule

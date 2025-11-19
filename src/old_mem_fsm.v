@@ -11,7 +11,7 @@ The flash has it’s own opcodes and also a cache you can load to for fast acces
 We will decode it to packets like this and send to the SPI controller whenever the status poller tells us it’s ready:command, data, dummy, data
 
 */
-module transaction_fsm(
+module mem_transaction_fsm(
     input wire clk,
     input wire rst,
     
@@ -29,7 +29,7 @@ module transaction_fsm(
     output wire [7:0] out_wr_cp_data,
     input wire in_wr_cp_ready,
 
-    output wire in_cp_enc_type // 0 - AES, 1 SHA
+    output wire in_cp_enc_type, // 0 - AES, 1 SHA
 
     //----SPI Controller Connections----
     output wire out_spi_start,

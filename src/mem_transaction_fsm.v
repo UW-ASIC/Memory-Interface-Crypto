@@ -1,6 +1,6 @@
-module transaction_fsm(
+module mem_transaction_fsm(
     input wire clk,
-    input wire rst,
+    input wire rst_n,
 
     //command port
     input wire in_cmd_valid,
@@ -48,6 +48,12 @@ module transaction_fsm(
     input wire in_status_op_done   //status counter says: reached length
 
 );
+    // Dump the signals to a VCD file. You can view it with gtkwave or surfer.
+    initial begin
+        $dumpfile("mem_transaction_fsm.vcd");
+        $dumpvars(0, mem_transaction_fsm);
+        #1;
+    end
 
     //flash opcodes
     localparam [7:0] OPC_ENABLE_RESET = 8'h66;
@@ -96,8 +102,8 @@ module transaction_fsm(
     reg need_pre_wren;
 
     //sequential
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
             state <= S_BOOT_ENA;
             opcode_q <= 2'b00;
             addr_q <= 24'h0;
