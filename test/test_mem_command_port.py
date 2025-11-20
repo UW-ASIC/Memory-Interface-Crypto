@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Clarification required on: 
-# writing data flow 256b reg, acking ack timing 
+# writing data flow 256b reg, ack timing 
 # data bus control timing
 
 import cocotb,random
@@ -763,3 +763,4 @@ async def do_test_fsm_handshake(dut):
     await signal_check()
 
     dut._log.info("ACK flow complete")
+
