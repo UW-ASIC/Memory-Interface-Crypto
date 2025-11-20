@@ -175,13 +175,16 @@ module host_cmd_port_v2(
             case (state)
                 IDLE:
                     drive_fsm_bus <= 1'b0; // Default to not driving the FSM bus
-                    length_valid <= 1'b0;
-                    address_valid <= 1'b0;
 
                     // Polling: Get the next command from NOC if transaction done and if it is valid and fsm bus is ready
                     if (bus_valid && out_bus_ready) begin
                         state <= READING_BUS_OP_ADDR;
                         cur_beat <= 6'b000000;
+
+                        // Reset the validity of length, address, and data
+                        length_valid <= 1'b0;
+                        address_valid <= 1'b0;
+                        out_fsm_valid <= 1'b0;
                     end
 
                 READING_BUS_OP_ADDR:
@@ -273,6 +276,10 @@ module host_cmd_port_v2(
                             cur_beat <= 6'b000000;
                             out_bus_ready <= 1'b0;
                             out_fsm_valid <= 1'b1;
+                            length <=   (source == SHA) ? 256 :
+                                        (source == AES) ? 128 :
+                                                            0;
+                            length_valid <= 1; 
                             ack_state <= SEND_ACK_ACCEL;
                         end
                         else if (bus_valid && out_bus_ready) begin
