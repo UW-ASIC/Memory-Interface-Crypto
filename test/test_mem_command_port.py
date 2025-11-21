@@ -16,6 +16,13 @@ from cocotb.triggers import (
 )
 from cocotb.utils import get_sim_time
 
+RD_KEY_AES_BYTES = 32
+RD_TEXT_AES_BYTES = 16
+RD_TEXT_SHA_BYTES = 32
+
+WR_AES_BYTES = 16
+WR_SHA_BYTES = 32
+
 def rd_key_aes_256b():
     enc   = random.randint(0,1)
     src   = 0b10        # AES
@@ -192,7 +199,7 @@ async def do_test_rd_key_decode(dut):
     assert dut.ena_status.value == 1,f"ena_status expecpted 1 got {dut.ena_status.value}"
     # length
     assert dut.length_valid.value == 1,f"length_valid expecpted 1 got {dut.length_valid.value}"
-    assert int(dut.length.value) == 256,f"length expecpted 256 got {int(dut.length.value)}"
+    assert int(dut.length.value) == RD_KEY_AES_BYTES,f"length expecpted {RD_KEY_AES_BYTES} got {int(dut.length.value)}"
     # addr
     assert dut.address_valid.value == 1,f"address_valid expecpted 1 got {dut.address_valid.value}"
     assert int(dut.address.value) == 0xfedcba,f"address expecpted 0xfedcba got {int(dut.address.value):#08x}" 
@@ -225,7 +232,7 @@ async def do_test_rd_text_decode(dut):
         assert dut.ena_status.value == 1,f"ena_status expecpted 1 got {dut.ena_status.value}"
         # length
         assert dut.length_valid.value == 1,f"length_valid expecpted 1 got {dut.length_valid.value}"
-        assert int(dut.length.value) == 128,f"length expecpted 128 got {int(dut.length.value)}"
+        assert int(dut.length.value) == RD_TEXT_AES_BYTES,f"length expecpted {RD_TEXT_AES_BYTES} got {int(dut.length.value)}"
         # addr
         assert dut.address_valid.value == 1,f"address_valid expecpted 1 got {dut.address_valid.value}"
         assert int(dut.address.value) == 0xfedcba,f"address expecpted 0xfedcba got {int(dut.address.value):#08x}" 
@@ -253,7 +260,7 @@ async def do_test_rd_text_decode(dut):
         assert dut.ena_status.value == 1,f"ena_status expecpted 1 got {dut.ena_status.value}"
         # length
         assert dut.length_valid.value == 1,f"length_valid expecpted 1 got {dut.length_valid.value}"
-        assert int(dut.length.value) == 256,f"length expecpted 256 got {int(dut.length.value)}"
+        assert int(dut.length.value) == RD_TEXT_SHA_BYTES,f"length expecpted {RD_TEXT_SHA_BYTES} got {int(dut.length.value)}"
         # addr
         assert dut.address_valid.value == 1,f"address_valid expecpted 1 got {dut.address_valid.value}"
         assert int(dut.address.value) == 0xfedcba,f"address expecpted 0xfedcba got {int(dut.address.value):#08x}" 
@@ -288,7 +295,7 @@ async def do_test_wr_res_decode(dut):
     assert dut.ena_status.value == 1,f"ena_status expecpted 1 got {dut.ena_status.value}"
     # length
     assert dut.length_valid.value == 1,f"length_valid expecpted 1 got {dut.length_valid.value}"
-    assert int(dut.length.value) == 128,f"length expecpted 128 got {int(dut.length.value)}"
+    assert int(dut.length.value) == WR_AES_BYTES,f"length expecpted {WR_AES_BYTES} got {int(dut.length.value)}"
     # addr
     assert dut.address_valid.value == 1,f"address_valid expecpted 1 got {dut.address_valid.value}"
     assert int(dut.address.value) == 0xfedcba,f"address expecpted 0xfedcba got {int(dut.address.value):#08x}" 
@@ -314,7 +321,7 @@ async def do_test_wr_res_decode(dut):
     assert dut.ena_status.value == 1,f"ena_status expecpted 1 got {dut.ena_status.value}"
     # length
     assert dut.length_valid.value == 1,f"length_valid expecpted 1 got {dut.length_valid.value}"
-    assert int(dut.length.value) == 256,f"length expecpted 256 got {int(dut.length.value)}"
+    assert int(dut.length.value) == WR_SHA_BYTES,f"length expecpted {WR_SHA_BYTES} got {int(dut.length.value)}"
     # addr
     assert dut.address_valid.value == 1,f"address_valid expecpted 1 got {dut.address_valid.value}"
     assert int(dut.address.value) == 0x654321,f"address expecpted 0x654321 got {int(dut.address.value):#08x}"  
@@ -365,7 +372,7 @@ async def do_test_read_from_bus(dut):
     async def rdkey():
         dut._log.info("Read Key Start")
         # read key randomized data 32 Bytes
-        rd_key = [randomized_data() for _ in range(32)]
+        rd_key = [randomized_data() for _ in range(RD_KEY_AES_BYTES)]
 
         # read key randomized opcode, and address 0xfedcba from 23:0
         rd_keyarr = [rd_key_aes_256b(),0xBA, 0xDC, 0xFE]
@@ -422,7 +429,7 @@ async def do_test_read_from_bus(dut):
     async def rdtxt_aes():
         dut._log.info("Read Text AES start")
         # read text randomized data 16 Bytes
-        rd_txt = [randomized_data() for _ in range(16)]
+        rd_txt = [randomized_data() for _ in range(RD_TEXT_AES_BYTES)]
         # read text opcode with randomized opcode, and address 0x654321 
         rd_txtarr = [rd_text_aes_128b(),0x21, 0x43, 0x65]
 
@@ -477,7 +484,7 @@ async def do_test_read_from_bus(dut):
     async def rdtxt_sha():
         dut._log.info("Read Text SHA start")
         # read text randomized data 32 Bytes
-        rd_txt = [randomized_data() for _ in range(32)]
+        rd_txt = [randomized_data() for _ in range(RD_TEXT_SHA_BYTES)]
         # read text opcode with randomized opcode, and address 0x654321 
         rd_txtarr = [rd_text_sha_256b(),0x21, 0x43, 0x65]
 
@@ -587,12 +594,12 @@ async def do_test_write_to_bus(dut):
     # sha write
     async def wrsha():
         # 32 B/256b randomized data
-        wr_sha_generate_256b_data = [randomized_data() for _ in range(32)]
+        wr_sha_data = [randomized_data() for _ in range(WR_SHA_BYTES)]
 
         # write from sha randomized opcode, and address 0xfedcba from 23:0
-        wr_sha_generate_256barr = [wr_sha_generate_256b(),0xBA, 0xDC, 0xFE]
+        wr_sha_dataarr = [wr_sha_generate_256b(),0xBA, 0xDC, 0xFE]
         dut.bus_valid.value = 1
-        for i in wr_sha_generate_256barr:
+        for i in wr_sha_dataarr:
             dut.in_bus_data.value = i
             await RisingEdge(dut.clk)
             
@@ -603,36 +610,51 @@ async def do_test_write_to_bus(dut):
         await ClockCycles(dut.clk, 2)
         await RisingEdge(dut.ena)
 
-        # randomized back pressure from bus
-        i = 0
-        while i < len(wr_sha_generate_256b_data):
-            dut.in_bus_data.value = wr_sha_generate_256b_data[i]
-            dut.bus_valid.value = random.randint(0,1)
+        # bus to cu
+        async def bus_cu_wrsha():
+            i = 0
             await RisingEdge(dut.clk)
+            while i <len(wr_sha_data):
+                # bus to cu randomized back pressure
+                dut.in_bus_data.value = wr_sha_data[i]
+                dut.bus_valid.value = random.randint(0,1)
 
-            if dut.bus_valid.value == 1 and dut.out_bus_ready.value == 1:
-                i+=1
-            # assert dut.out_fsm_valid.value == 0, f"out_fsm_valid expected 0 got {dut.out_fsm_valid.value}"  
-        # deassert bus valid
-        dut.bus_valid.value = 0
-        # output valid check
-        await RisingEdge(dut.clk)
-        assert dut.out_fsm_valid.value == 1, f"out_fsm_valid expected 1 got {dut.out_fsm_valid.value}"
-        # output check
-        dut_val = int(dut.out_fsm_data.value)
-        for j in range(31, -1, -1):
-            assert ((dut_val>>8*j)&0xff) == wr_sha_generate_256b_data[j],\
-            f"out_fsm_data expect {wr_sha_generate_256b_data[j]} got {((dut_val>>8*j)&0xff):#04x}"
+                await RisingEdge(dut.clk)
+                if dut.bus_valid.value == 1 and int(dut.out_bus_ready.value) == 1:
+                    i += 1
+            dut.bus_valid.value = 0
+
+        # cu to fsm
+        async def cu_fsm_wrsha():
+            j = 0
+            await RisingEdge(dut.clk)
+            while j <len(wr_sha_data):
+                # cu to fsm randomized back pressure
+                dut.fsm_ready.value = random.randint(0,1)
+                await RisingEdge(dut.clk)
+                if dut.fsm_ready.value == 1 and int(dut.out_fsm_valid.value) == 1:
+                    exp = wr_sha_data[j]
+                    # port name from cu to fsm
+                    got = int(dut.out_fsm_data.value)
+                    assert got == exp,f"[byte {j}] expected {exp:#04x}, got {got:#04x}"
+                    j += 1
+            dut.fsm_ready.value = 1 
+
+        producer_wrsha = cocotb.start_soon(bus_cu_wrsha())
+        await cu_fsm_wrsha()
+        await producer_wrsha
+
+        dut._log.info("Write SHA pass")
 
     # aes write
     async def wraes():
-        # 16 B/128b randomized data
-        wr_aes_generate_128b_data = [randomized_data() for _ in range(16)]
+        # 16 B/126b randomized data
+        wr_aes_data = [randomized_data() for _ in range(WR_AES_BYTES)]
 
-        # write from aes randomized opcode, and address 0x654321 from 23:0
-        wr_aes_generate_128barr = [wr_aes_generate_128b(),0x21, 0x43, 0x65]
+        # write from sha randomized opcode, and address 0xfedcba from 23:0
+        wr_aes_dataarr = [wr_aes_generate_128b(),0xBA, 0xDC, 0xFE]
         dut.bus_valid.value = 1
-        for i in wr_aes_generate_128barr:
+        for i in wr_aes_dataarr:
             dut.in_bus_data.value = i
             await RisingEdge(dut.clk)
             
@@ -643,26 +665,101 @@ async def do_test_write_to_bus(dut):
         await ClockCycles(dut.clk, 2)
         await RisingEdge(dut.ena)
 
-        # randomized back pressure from bus
-        i = 0
-        while i < len(wr_aes_generate_128b_data):
-            dut.in_bus_data.value = wr_aes_generate_128b_data[i]
-            dut.bus_valid.value = random.randint(0,1)
+        # bus to cu
+        async def bus_cu_wraes():
+            i = 0
             await RisingEdge(dut.clk)
+            while i <len(wr_aes_data):
+                # bus to cu randomized back pressure
+                dut.in_bus_data.value = wr_aes_data[i]
+                dut.bus_valid.value = random.randint(0,1)
 
-            if dut.bus_valid.value == 1 and dut.out_bus_ready.value == 1:
-                i+=1
-            # assert dut.out_fsm_valid.value == 0, f"out_fsm_valid expected 0 got {dut.out_fsm_valid.value}"  
-        # deassert bus valid
-        dut.bus_valid.value = 0
-        # output valid check
-        await RisingEdge(dut.clk)
-        assert dut.out_fsm_valid.value == 1, f"out_fsm_valid expected 1 got {dut.out_fsm_valid.value}"
-        # output check
-        dut_val = int(dut.out_fsm_data.value)
-        for j in range(15, -1, -1):
-            assert ((dut_val>>8*j)&0xff) == wr_aes_generate_128b_data[j],\
-            f"out_fsm_data expect {wr_aes_generate_128b_data[j]} got {((dut_val>>8*j)&0xff):#04x}"
+                await RisingEdge(dut.clk)
+                if dut.bus_valid.value == 1 and int(dut.out_bus_ready.value) == 1:
+                    i += 1
+            dut.bus_valid.value = 0
+
+        # cu to fsm
+        async def cu_fsm_wraes():
+            j = 0
+            await RisingEdge(dut.clk)
+            while j <len(wr_aes_data):
+                # cu to fsm randomized back pressure
+                dut.fsm_ready.value = random.randint(0,1)
+                await RisingEdge(dut.clk)
+                if dut.fsm_ready.value == 1 and int(dut.out_fsm_valid.value) == 1:
+                    exp = wr_aes_data[j]
+                    # port name from cu to fsm
+                    got = int(dut.out_fsm_data.value)
+                    assert got == exp,f"[byte {j}] expected {exp:#04x}, got {got:#04x}"
+                    j += 1
+            dut.fsm_ready.value = 1 
+
+        producer_wrsha = cocotb.start_soon(bus_cu_wraes())
+        await cu_fsm_wraes()
+        await producer_wrsha
+
+        dut._log.info("Write AES pass")
+        # # randomized back pressure from bus
+        # i = 0
+        # while i < len(wr_sha_generate_256b_data):
+        #     dut.in_bus_data.value = wr_sha_generate_256b_data[i]
+        #     dut.bus_valid.value = random.randint(0,1)
+        #     await RisingEdge(dut.clk)
+
+        #     if dut.bus_valid.value == 1 and dut.out_bus_ready.value == 1:
+        #         i+=1
+        #     # assert dut.out_fsm_valid.value == 0, f"out_fsm_valid expected 0 got {dut.out_fsm_valid.value}"  
+        # # deassert bus valid
+        # dut.bus_valid.value = 0
+        # # output valid check
+        # await RisingEdge(dut.clk)
+        # assert dut.out_fsm_valid.value == 1, f"out_fsm_valid expected 1 got {dut.out_fsm_valid.value}"
+        # # output check
+        # dut_val = int(dut.out_fsm_data.value)
+        # for j in range(31, -1, -1):
+        #     assert ((dut_val>>8*j)&0xff) == wr_sha_generate_256b_data[j],\
+        #     f"out_fsm_data expect {wr_sha_generate_256b_data[j]} got {((dut_val>>8*j)&0xff):#04x}"
+
+    # aes write
+    # async def wraes():
+    #     # 16 B/128b randomized data
+    #     wr_aes_generate_128b_data = [randomized_data() for _ in range(WR_AES_BYTES)]
+
+    #     # write from aes randomized opcode, and address 0x654321 from 23:0
+    #     wr_aes_generate_128barr = [wr_aes_generate_128b(),0x21, 0x43, 0x65]
+    #     dut.bus_valid.value = 1
+    #     for i in wr_aes_generate_128barr:
+    #         dut.in_bus_data.value = i
+    #         await RisingEdge(dut.clk)
+            
+
+    #     # pull down valid on bus until rise edge of ena  
+    #     dut.bus_valid.value = 0   
+    #     await RisingEdge(dut.clk)
+    #     await ClockCycles(dut.clk, 2)
+    #     await RisingEdge(dut.ena)
+
+    #     # randomized back pressure from bus
+    #     i = 0
+    #     while i < len(wr_aes_generate_128b_data):
+    #         dut.in_bus_data.value = wr_aes_generate_128b_data[i]
+    #         dut.bus_valid.value = random.randint(0,1)
+    #         await RisingEdge(dut.clk)
+
+    #         if dut.bus_valid.value == 1 and dut.out_bus_ready.value == 1:
+    #             i+=1
+    #         # assert dut.out_fsm_valid.value == 0, f"out_fsm_valid expected 0 got {dut.out_fsm_valid.value}"  
+    #     # deassert bus valid
+    #     dut.bus_valid.value = 0
+    #     # output valid check
+    #     await RisingEdge(dut.clk)
+    #     assert dut.out_fsm_valid.value == 1, f"out_fsm_valid expected 1 got {dut.out_fsm_valid.value}"
+    #     # output check
+    #     dut_val = int(dut.out_fsm_data.value)
+    #     for j in range(15, -1, -1):
+    #         assert ((dut_val>>8*j)&0xff) == wr_aes_generate_128b_data[j],\
+    #         f"out_fsm_data expect {wr_aes_generate_128b_data[j]} got {((dut_val>>8*j)&0xff):#04x}"
     
     # aes write flow
     await wraes()
@@ -703,7 +800,7 @@ async def do_test_fsm_handshake(dut):
     async def rd_key_ack_flow():
         dut._log.info("Read Key ACK start")
         # data generate
-        data = [randomized_data() for _ in range (32)]
+        data = [randomized_data() for _ in range (RD_KEY_AES_BYTES)]
     # read key opcode with randomized opcode, and address 0xfedcba from 23:0
         opcode = [rd_key_aes_256b(),0xBA, 0xDC, 0xFE]
         for i in opcode:
@@ -748,7 +845,7 @@ async def do_test_fsm_handshake(dut):
         async def rd_txt_ack_aes():
             dut._log.info("Read Text ACK AES start")
             # data generate
-            data = [randomized_data() for _ in range (16)]
+            data = [randomized_data() for _ in range (RD_TEXT_AES_BYTES)]
             # read text opcode with randomized opcode, and address 0xfedcba from 23:0
             opcode = [rd_text_aes_128b(),0xBA, 0xDC, 0xFE]
             for i in opcode:
@@ -790,7 +887,7 @@ async def do_test_fsm_handshake(dut):
         async def rd_txt_ack_sha():
             dut._log.info("Read Text ACK SHA start")
             # data generate 32 Bytes
-            data = [randomized_data() for _ in range (32)]
+            data = [randomized_data() for _ in range (RD_TEXT_SHA_BYTES)]
             # read text opcode with randomized opcode, and address 0xfedcba from 23:0
             opcode = [rd_text_sha_256b(),0xBA, 0xDC, 0xFE]
             for i in opcode:
@@ -836,7 +933,7 @@ async def do_test_fsm_handshake(dut):
     async def wrsha_ack_flow():
         dut._log.info("Write SHA ACK start")
         # data generate
-        data = [randomized_data() for _ in range (32)]
+        data = [randomized_data() for _ in range (WR_SHA_BYTES)]
     # write sha key opcode with randomized opcode, and address 0xfedcba from 23:0
         opcode = [wr_sha_generate_256b(),0xBA, 0xDC, 0xFE]
         for i in opcode:
@@ -879,7 +976,7 @@ async def do_test_fsm_handshake(dut):
     async def wraes_ack_flow():
         dut._log.info("Write AES ACK start")
         # data generate
-        data = [randomized_data() for _ in range (16)]
+        data = [randomized_data() for _ in range (WR_AES_BYTES)]
     # read text opcode with randomized opcode, and address 0xfedcba from 23:0
         opcode = [wr_aes_generate_128b(),0xBA, 0xDC, 0xFE]
         for i in opcode:
