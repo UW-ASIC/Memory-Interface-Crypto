@@ -235,6 +235,10 @@ module host_cmd_port_v2(
                                         state <= READING_BUS_DATA;
                                         r_w <= 1'b0; // Writing to FSM
                                         ena <= 1'b1;
+                                        length <=   (source == SHA) ? 256 :
+                                                    (source == AES) ? 128 :
+                                                                        0;
+                                        length_valid <= 1; 
                                     end
                                     if (noc_opcode == RD_KEY) begin
                                         state <= TRANSFER_DATA_FSM_TO_BUS;
@@ -245,7 +249,7 @@ module host_cmd_port_v2(
                                     end
                                     else if (noc_opcode == RD_TEXT) begin
                                         state <= TRANSFER_DATA_FSM_TO_BUS;
-                                        length <= 9'd16; // 128 bits / 8 bits per beat = 16 beats
+                                        length <= (source == SHA) ? 9'32 : (source == AES) ? 9'd16 : 0; // 128 bits / 8 bits per beat = 16 beats
                                         length_valid <= 1'b1;
                                         r_w <= 1'b1; // Reading from FSM
                                         ena <= 1'b1;
