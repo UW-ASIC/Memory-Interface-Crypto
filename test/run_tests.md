@@ -11,7 +11,7 @@
 ```
 
 ```bash
-make TOPLEVEL=your_module MODULE=your_module PROJECT_SOURCES=your_module.v TEST_CASE = <optional>
+make TOPLEVEL=your_module MODULE=your_module PROJECT_SOURCES=your_module.v TESTCASE = <optional>
 ex:
 make TOPLEVEL=mem_transaction_fsm MODULE=test_mem_transaction_fsm PROJECT_SOURCES=mem_transaction_fsm.v TEST_CASE=test_rd_key
 ```
