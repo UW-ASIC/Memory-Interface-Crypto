@@ -68,8 +68,39 @@ async def mock_return_data(dut, transfer_len):
         await spi_send_rx(dut, i)
         if i > 0:
             assert dut.out_wr_cp_data.value == i - 1
+    await RisingEdge(dut.clk)
+    assert dut.out_wr_cp_data.value == i
+    return True
+
+async def mock_output_data(dut, transfer_len):
+    dut.in_spi_tx_ready.value = 1
+    dut.in_wr_data_valid = 1
+    for i in range(transfer_len): #256 bits
+        dut.in_cmd_data = i
+        await spi_accept_tx(dut, 1)
+        if i > 0:
+            # assert dut.out_spi_tx_valid.value == 1
+            assert dut.out_spi_tx_data == i
     return True
     
+async def spi_startup(dut):
+    set_batch_value(dut, 0, "in_spi_tx_ready", "in_spi_rx_valid", "in_spi_rx_data", "in_spi_done")
+    set_batch_value(dut, 1, "in_wr_cp_ready", "in_cmd_valid", "in_wr_data_valid")
+
+    await _reset(dut)
+
+    spi_started = await wait_signal_high(dut, "out_spi_start")
+
+    await ClockCycles(dut.clk, 10)
+    dut.in_spi_done.value = 1
+
+    for _ in range(7):
+        dut.in_spi_tx_ready.value = 1
+        await RisingEdge(dut.out_spi_tx_valid)
+        dut.in_spi_tx_ready.value = 0
+        await ClockCycles(dut.clk, 1)
+    dut.in_spi_tx_ready.value = 1
+
 def set_batch_value(dut, val, *to_set):
     for sig in to_set:
         getattr(dut, sig).value = val
@@ -88,28 +119,14 @@ async def test_rd_key_command(dut):
     
     dut.in_cmd_data.value = 0xAB
 
-    set_batch_value(dut, 0, "in_spi_tx_ready", "in_spi_rx_valid", "in_spi_rx_data", "in_spi_done")
-    set_batch_value(dut, 1, "in_wr_cp_ready", "in_cmd_valid", "in_wr_data_valid")
-
-    await _reset(dut)
-
-    spi_started = await wait_signal_high(dut, "out_spi_start")
-
-    await ClockCycles(dut.clk, 10)
-    dut.in_spi_done.value = 1
-
-    #TODO: mock interact with spi_controller 
-    # Ensure the length of the transaction is correct
-    # Ensure the data field to command port is correct eat time
-    
-    for _ in range(7):
-        dut.in_spi_tx_ready.value = 1
-        await RisingEdge(dut.out_spi_tx_valid)
-        dut.in_spi_tx_ready.value = 0
-        await ClockCycles(dut.clk, 1)
-    dut.in_spi_tx_ready.value = 1
+    await spi_startup(dut)
 
     await with_timeout(mock_return_data(dut, 32), 400, timeout_unit = "us")
+
+    await ClockCycles(dut.clk, 2)
+
+    assert dut.out_wr_cp_data_valid.value == 0, "out_wr_cp_data_valid need to be 0 after data transaction finishes"
+
 
 @cocotb.test()
 async def test_rd_text_command(dut):
@@ -124,42 +141,32 @@ async def test_rd_text_command(dut):
     dut.in_cmd_addr.value = 0xAABBCC
     dut.in_cmd_data.value = 0xAB
 
-    set_batch_value(dut, 0, "in_spi_tx_ready", "in_spi_rx_valid", "in_spi_rx_data", "in_spi_done")
-    set_batch_value(dut, 1, "in_wr_cp_ready", "in_cmd_valid", "in_wr_data_valid")
-
-    await _reset(dut)
-
-    await wait_signal_high(dut, "out_spi_start")
-
-    await ClockCycles(dut.clk, 10)
-    dut.in_spi_done.value = 1
-
-    for _ in range(7):
-        dut.in_spi_tx_ready.value = 1
-        await RisingEdge(dut.out_spi_tx_valid)
-        dut.in_spi_tx_ready.value = 0
-        await ClockCycles(dut.clk, 1)
-    dut.in_spi_tx_ready.value = 1
+    await spi_startup(dut)
 
     await with_timeout(mock_return_data(dut, 64), 800, timeout_unit = "us")
 
-# @cocotb.test()
-# async def test_wr_res_command(dut):
-#     # Depending on the source ID this should: write out in 128 bits for AES *OR* 256 bits for SHA
-#     # Set the clock period to 10 us (100 KHz)
-#     clock = Clock(dut.clk, 10, units="us")
-#     cocotb.start_soon(clock.start())
+    await ClockCycles(dut.clk, 2)
 
-#     dut.in_cmd_valid.value = 1
-#     dut.in_cmd_opcode.value = cm.WR_RES
-#     dut.in_cmd_addr.value = 0xAABBCC
+    assert dut.out_wr_cp_data_valid.value == 0, "out_wr_cp_data_valid need to be 0 after data transaction finishes"
     
-#     dut.in_wr_data_valid = 1
-#     dut.in_cmd_data.value = 0xAB
 
-#     spi_started = await wait_signal_high(dut, "out_spi_start")
+@cocotb.test()
+async def test_wr_res_command(dut):
+    # Depending on the source ID this should: write out in 128 bits for AES *OR* 256 bits for SHA
+    # Set the clock period to 10 us (100 KHz)
+    clock = Clock(dut.clk, 10, units="us")
+    cocotb.start_soon(clock.start())
 
-#     assert spi_started
+    dut.in_cmd_valid.value = 1
+    dut.in_cmd_opcode.value = cm.WR_RES
+    dut.in_cmd_addr.value = 0xAABBCC
+    
+    dut.in_wr_data_valid = 1
+    dut.in_cmd_data.value = 0xAB
+
+    await spi_startup(dut)
+
+    await with_timeout(mock_output_data(dut, 16), 800, timeout_unit = "us")
 
 # @cocotb.test()
 # async def test_cp_handshake(dut):

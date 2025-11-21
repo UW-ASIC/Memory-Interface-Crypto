@@ -412,9 +412,9 @@ module mem_transaction_fsm(
                 if(in_spi_tx_ready) begin
                     if(need_dummy) begin
                         next_state = S_SEND_DUMMY;
-                    end else if(opcode_q == RD_KEY) begin
+                    end else if(opcode_q == RD_KEY || opcode_q == RD_TEXT) begin
                         next_state = S_RECV_DATA;
-                    end else if(opcode_q == RD_TEXT) begin
+                    end else if(opcode_q == WR_RES) begin
                         next_state = S_SEND_WDATA;
                     end else begin
                         next_state = S_WAIT_DONE;
@@ -434,7 +434,10 @@ module mem_transaction_fsm(
             end
 
             S_SEND_WDATA: begin
-                if(in_wr_data_valid && in_spi_tx_ready) begin
+                // if(in_wr_data_valid && in_spi_tx_ready) begin
+                //     next_state = S_WAIT_DONE;
+                // end
+                if(in_status_op_done) begin
                     next_state = S_WAIT_DONE;
                 end
             end
