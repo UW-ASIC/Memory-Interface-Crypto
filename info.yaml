@@ -19,7 +19,6 @@ project:
   source_files:
     - top.v
     - command_port.v
-    - command_port_version2.v
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 pinout:
