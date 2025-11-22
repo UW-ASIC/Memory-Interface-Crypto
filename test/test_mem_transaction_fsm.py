@@ -84,6 +84,7 @@ async def mock_output_data(dut, transfer_len):
         dut.in_cmd_data.value = i
         dut.in_wr_data_valid.value = 1
         await accept_tx_spi_byte(dut, i)
+        dut.in_wr_data_valid.value = 0
         if i > 0:
             assert dut.out_spi_tx_data.value == i
         await ClockCycles(dut.clk, 8)
@@ -150,6 +151,7 @@ async def test_rd_key_command(dut):
     dut.in_cmd_addr.value = 0xAABBCC
     
     dut.in_cmd_data.value = 0xAB
+    dut.in_cmd_enc_type.value = 0
     
     await spi_accept_init(dut)
 
@@ -178,6 +180,8 @@ async def test_rd_text_command(dut):
     dut.in_cmd_enc_type.value = 1 #SHA
     dut.in_cmd_addr.value = 0xAABBCC
     dut.in_cmd_data.value = 0xAB
+
+    dut.in_cmd_enc_type.value = 0
 
     await spi_accept_init(dut)
 
@@ -208,7 +212,11 @@ async def test_wr_res_command(dut):
     dut.in_wr_data_valid.value = 1
     dut.in_cmd_data.value = 0xAB
 
+    dut.in_cmd_enc_type.value = 0
+
     await spi_accept_init(dut)
+    
+    dut.in_spi_rx_data.value = 0xff
 
     await accept_tx_spi_byte(dut, 0x32)
     await accept_tx_spi_byte(dut, 0xAA)
@@ -216,6 +224,10 @@ async def test_wr_res_command(dut):
     await accept_tx_spi_byte(dut, 0xCC)
 
     await mock_output_data(dut, 16)
+
+    await ClockCycles(dut.clk, 10)
+
+    await produce_rx_spi_byte(dut, 0x00)
 
 # @cocotb.test()
 # async def test_cp_handshake(dut):

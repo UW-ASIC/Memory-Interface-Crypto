@@ -1,6 +1,6 @@
 module mem_transaction_fsm(
     input wire clk,
-    input wire ,
+    input wire rst_n,
 
     //command port
     input wire in_cmd_valid,
@@ -119,7 +119,7 @@ module mem_transaction_fsm(
     reg [23:0] addr_q;
     reg [7:0] flash_cmd_byte;
     reg [15:0] total_bytes;
-    reg [7:0] total_recv_bytes;
+    reg [7:0] total_transaction_bytes;
     reg need_dummy;
     reg need_pre_wren;
 
@@ -133,7 +133,7 @@ module mem_transaction_fsm(
             addr_q <= 24'h0;
             flash_cmd_byte <= 8'h00;
             total_bytes <= 16'd0;
-            total_recv_bytes <= 16'd0;
+            total_transaction_bytes <= 16'd0;
             out_fsm_cmd_ready <= 1'b0;
             out_fsm_data_ready <= 1'b0;
             out_wr_cp_data_valid <= 1'b0;
@@ -243,10 +243,10 @@ module mem_transaction_fsm(
                         RD_KEY, RD_TEXT: begin //RD_KEY / RD_TEXT
                             flash_cmd_byte <= FLASH_READ;
                             total_bytes <= 16'd6; //cmd + 3 addr + dummy + 1 data (len is counted by status)
-                            if(opcode_q == RD_KEY) total_recv_bytes <= 8'd32;
+                            if(opcode_q == RD_KEY) total_transaction_bytes <= 8'd32;
                             else begin
-                                if(in_cmd_enc_type == 0) total_recv_bytes <= 8'd8;
-                                else total_recv_bytes <= 8'd64;
+                                if(in_cmd_enc_type == 0) total_transaction_bytes <= 8'd8;
+                                else total_transaction_bytes <= 8'd64;
                             end
                             need_dummy <= 1'b1;
                             need_pre_wren <= 1'b0;
@@ -255,6 +255,7 @@ module mem_transaction_fsm(
                         WR_RES: begin //WR_RES
                             flash_cmd_byte <= FLASH_PP;
                             total_bytes <= 16'd5; //cmd + 3 addr + 1 data (len is counted by status)
+                            total_transaction_bytes <= in_cmd_enc_type == 0 ? 16 : 32; //128 for AES, 256 for SHA
                             need_dummy <= 1'b0;
                             need_pre_wren <= 1'b1; //WREN before PP
                             out_spi_r_w <= 1'b0; //write
@@ -346,14 +347,16 @@ module mem_transaction_fsm(
                         out_spi_tx_valid <= 1'b1;
                         out_spi_tx_data <= in_cmd_data;
                         out_byte_done <= 1'b1;
+                        total_transaction_bytes <= total_transaction_bytes - 1;
                     end
                 end    
 
                 S_POLL_STATUS: begin
-                    out_spi_tx_valid = 1;
-                    out_spi_rx_ready = 1;
+                    out_spi_tx_valid <= 1;
+                    out_spi_tx_data <= 1;
+                    out_spi_rx_ready <= 1;
 
-                    flash_status_reg = 1;
+                    flash_status_reg <= 1;
                     if(in_spi_rx_valid) flash_status_reg <= in_spi_rx_data;
                 end
 
@@ -363,7 +366,7 @@ module mem_transaction_fsm(
                     if(in_spi_rx_valid) begin
                         out_wr_cp_data <= in_spi_rx_data;
                         out_spi_rx_ready <= 1'b0;
-                        total_recv_bytes <= total_recv_bytes - 1;
+                        total_transaction_bytes <= total_transaction_bytes - 1;
 
                         if(in_wr_cp_ready) begin
                             out_wr_cp_data_valid <= 1'b1;
@@ -535,7 +538,7 @@ module mem_transaction_fsm(
                 // if(in_wr_data_valid && in_spi_tx_ready) begin
                 //     next_state = S_WAIT_DONE;
                 // end
-                if(in_status_op_done) begin
+                if(total_transaction_bytes <= 0) begin
                     jump_state = S_POLL_STATUS;
                 end
                 else begin
@@ -543,6 +546,7 @@ module mem_transaction_fsm(
                 end
                 jump_state_timed = S_WAIT_DONE_JUMP;
                 next_state = S_WAIT_JUMP_TIMED;
+                timer_expire = 2;
             end
 
             S_POLL_STATUS: begin
@@ -554,7 +558,7 @@ module mem_transaction_fsm(
 
 
             S_RECV_DATA: begin
-                if(total_recv_bytes == 0) begin
+                if(total_transaction_bytes == 0) begin
                     jump_state_timed = S_WAIT_DONE;
                     next_state = S_WAIT_JUMP_TIMED;
                 end
