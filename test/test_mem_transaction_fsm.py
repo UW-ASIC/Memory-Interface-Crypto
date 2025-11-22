@@ -4,7 +4,7 @@
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge, with_timeout
-from common import _reset, wait_signal_high
+from common import _reset, wait_signal_high, wait_signal_value
 import common as cm
 
 # ----------------------------------------------------------------------
@@ -37,6 +37,23 @@ async def status_done(dut):
     dut.in_status_op_done.value = 1
     await RisingEdge(dut.clk)
     dut.in_status_op_done.value = 0
+
+
+async def spi_accept_init(dut):
+    while True:
+        await RisingEdge(dut.clk)
+        if dut.out_spi_valid.value == 1 and dut.out_spi_tx_data.value == 0x99:
+            dut.in_spi_tx_ready.value = 0
+            break
+
+    await ClockCycles(dut.clk, 8)
+    
+    
+    dut.in_spi_tx_ready.value = 1
+
+
+
+    
 
 
 # ----------------------------------------------------------------------
@@ -80,7 +97,7 @@ async def mock_output_data(dut, transfer_len):
         await spi_accept_tx(dut, 1)
         if i > 0:
             # assert dut.out_spi_tx_valid.value == 1
-            assert dut.out_spi_tx_data == i
+            assert dut.out_spi_tx_data.value == i
     return True
     
 async def spi_startup(dut):

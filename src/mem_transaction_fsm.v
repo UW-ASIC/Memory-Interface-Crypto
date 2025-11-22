@@ -93,6 +93,8 @@ module mem_transaction_fsm(
     localparam S_FINISH = 5'd21;
 
     localparam S_SEND_QE = 5'd22;
+    localparam S_WAIT_DONE_JUMP = 5'd23;
+    localparam S_WAIT_JUMP_TIMED = 5'd24;
 
     localparam RD_KEY = 2'b00;
     localparam RD_TEXT = 2'b01;
@@ -100,10 +102,13 @@ module mem_transaction_fsm(
 
     reg [4:0] state;
     reg [4:0] next_state;
+    reg [4:0] jump_state;
+    reg [4:0] jump_state_timed;
 
     reg [3:0] rst_wait;
     wire [3:0] t_rst = 4;
-    reg [3:0] gp_counter;
+    reg [3:0] gp_timer;
+    reg [3:0] timer_expire = 0;
 
     reg status_qe;
 
@@ -147,7 +152,7 @@ module mem_transaction_fsm(
             need_pre_wren <= 1'b0;
 
             status_qe <= 0;
-            gp_counter <= 0;
+            gp_timer <= 0;
             rst_wait <= 0;
         end else begin
         state <= next_state;
@@ -165,8 +170,15 @@ module mem_transaction_fsm(
         out_lwdo_start <= 1'b0;
         out_gwdo_start <= 1'b0;
 
+        gp_timer <= 0;
+
             case(state)
-                
+                S_WAIT_DONE_JUMP: begin
+                    gp_timer <= gp_timer;
+                end
+                S_WAIT_JUMP_TIMED: begin
+                    gp_timer <= gp_timer + 1;
+                end
                 // -------- STARTUP FLOW --------
                 S_BOOT_ENA: begin
                     //send 66h
@@ -189,11 +201,6 @@ module mem_transaction_fsm(
                     out_spi_r_w <= 1'b0;
                 end
 
-                S_BOOT_RST_WAIT: begin
-                    //wait
-                    if(rst_wait <= t_rst) rst_wait <= rst_wait + 1;
-                end
-
                 S_BOOT_WREN: begin
                     out_spi_start <= 1'b1;
                     out_spi_num_bytes <= 16'd1;
@@ -205,8 +212,6 @@ module mem_transaction_fsm(
 
                 S_BOOT_WREN_WAIT: begin
                     //wait
-                    //also wait for 10 clock cycles for tRST
-                    // if(rst_wait <= t_rst) rst_wait <= rst_wait + 1;
                 end
 
                 S_BOOT_GULK: begin
@@ -284,14 +289,16 @@ module mem_transaction_fsm(
                 S_START_SPI: begin
                     out_spi_start <= 1'b1;
                     out_spi_num_bytes <= total_bytes;
-                    gp_counter <= 0;
                 end
 
                 S_SEND_QE: begin
                     out_spi_tx_valid <= 1'b1;
-                    if(gp_counter == 0) out_spi_tx_data <= OPC_QE;
-                    else out_spi_tx_data <= 8'b00000010;
-                    gp_counter <= gp_counter + 1;
+                    if(gp_timer == 0) out_spi_tx_data <= OPC_QE;
+                    else begin
+                        out_spi_tx_data <= 8'b00000010;
+                        status_qe <= 1;
+                    end
+                    gp_timer <= gp_timer + 1;
                 end    
 
                 S_SEND_CMD: begin
@@ -369,14 +376,32 @@ module mem_transaction_fsm(
     //next state logic
     always @(*) begin
         next_state = state;
+        jump_state = jump_state;
+        jump_state_timed = jump_state_timed;
+        timer_expire = timer_expire;
         
         case(state)
+            S_WAIT_DONE_JUMP: begin
+                if(in_spi_done) begin
+                    next_state = jump_state;
+                end
+            end
+
+            S_WAIT_JUMP_TIMED: begin
+                if(gp_timer >= timer_expire) begin
+                    next_state = jump_state_timed;
+                end
+            end
 
             //startup chain
             S_BOOT_ENA: next_state = S_BOOT_ENA_WAIT;
             S_BOOT_ENA_WAIT: next_state = in_spi_done ? S_BOOT_RST : S_BOOT_ENA_WAIT;
-            S_BOOT_RST: next_state = S_BOOT_RST_WAIT;
-            S_BOOT_RST_WAIT: next_state = (in_spi_done && rst_wait >= t_rst) ? S_BOOT_WREN : S_BOOT_RST_WAIT;
+            S_BOOT_RST: begin
+                next_state = S_WAIT_JUMP_TIMED;
+                jump_state_timed = S_WAIT_DONE_JUMP;
+                jump_state = S_BOOT_WREN;
+                timer_expire = 10; //magic number, wait 4 cycles
+            end
             S_BOOT_WREN: next_state = S_BOOT_WREN_WAIT;
             S_BOOT_WREN_WAIT: next_state = in_spi_done ? S_BOOT_GULK : S_BOOT_WREN_WAIT;
             S_BOOT_GULK: next_state = S_BOOT_GULK_WAIT;
@@ -413,7 +438,14 @@ module mem_transaction_fsm(
             end
 
             S_SEND_QE: begin
-                if(gp_counter >= 1) next_state = S_SEND_CMD;
+                if(gp_timer < 1) begin
+                    next_state = S_WAIT_DONE_JUMP;
+                    jump_state = S_SEND_QE;
+                end 
+                else begin
+                    next_state = S_WAIT_DONE_JUMP;
+                    jump_state = S_SEND_CMD;
+                end
             end
 
             S_SEND_CMD: begin

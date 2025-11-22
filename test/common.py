@@ -15,6 +15,13 @@ async def wait_signal_high(dut, sig_name, timeout_cycles=1000):
         await ClockCycles(dut.clk, 1)
     return False
 
+async def wait_signal_value(dut, sig_name, value, timeout_cycles=1000):
+    for _ in range(timeout_cycles):
+        if int(getattr(dut, sig_name).value) == value:
+            return True
+        await ClockCycles(dut.clk, 1)
+    return False
+
 async def _reset(dut, cycles=20):
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, cycles)
