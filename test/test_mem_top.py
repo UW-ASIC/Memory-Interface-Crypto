@@ -59,12 +59,14 @@
 
 # 6) Random stress vs vendor-model scoreboard
 #    - Maintain Python array expected_mem[] mirroring vendor model.
-#    - Loop N times:
+#    - Loop 8 times:
 #        * Randomly choose one of:
-#            - WR_RES AES 16B @ random aligned addr.
-#            - WR_RES SHA 32B @ random aligned addr.
-#            - RD_TEXT AES 16B.
-#            - RD_TEXT SHA 32B.
+#            - WR_RES AES 16B @ fixed addr.
+#            - RD_TEXT AES 16B read back at addr.
+#            - WR_RES SHA 32B @ fixed addr
+#            - RD_TEXT AES 16B read back at addr
+#            - preload addr with data 32B
+#            - RD_KEY AES 32B read back at addr.
 #        * For WR: drive random data via host, update expected_mem.
 #        * For RD: capture host data, compare to expected_mem slice.
 #    - Host ready/valid randomized each byte. QSPI pins ONLY driven by mem.
@@ -188,28 +190,13 @@ def randomized_data():
     data = random.randint(0,255)
     return data
 
-def random_opcode_generate():
-    draw = random.randint(0,1,2)
-    match draw:
-        case 0:
-            opcode = wr_sha_generate_256b()
-        case 1:
-            opcode = wr_aes_generate_128b()
-        case 2:
-            opcode = rd_text_aes_128b()
-        case 3:
-            opcode = rd_text_sha_256b()
-        case 4:
-            opcode = rd_key_aes_256b()
-    return opcode
-
 @cocotb.test()
 async def mem_top(dut):
     dut._log.info("Mem Module Level Start")
 
     # Set the clock period to 10 ns (100 MHz)
     cocotb.start_soon(Clock(dut.clk, 10, "ns").start())
-
+    await full_smoke(dut)
 
     dut._log.info("Mem Module Level Pass")
 
@@ -402,7 +389,7 @@ async def rst(dut):
 
     # start up flow opcode check
     # coroutine spi only di do
-    spi_task = cocotb.start_soon(spi_only_di_do(dut))
+    spi_task = cocotb.start_soon(spi_only_di_do())
     await spi_task
     # SW RST
     opcode = await SPI_no_addr(dut)
@@ -950,7 +937,7 @@ async def random_stress(dut):
     # fixed addr 
     aes_addr = 0x000600
     sha_addr = 0x000700
-    aes_key_addr = 0x00800
+    aes_key_addr = 0x000800
     
     async def wr_sha_backpressure_rd(addr):
         # randomized data
@@ -1031,7 +1018,25 @@ async def full_smoke(dut):
 #    - Ensures whole stack (CMD + FSM + QSPI + flash model) works end-to-end.
     dut._log.info("Full Smoke Test Start")
 
+    await rst(dut)
 
+    # 2. Basic functional read/write + ack + uio_oe checks
+    await basic_read_write_ack(dut)
 
+    # 3. Busy / WIP serialization (while busy only 0x05 should appear)
+    await busy_WIP(dut)
+
+    # 4. Invalid / garbage opcode – confirm no QSPI traffic, no ack, no read data
+    await invalid_opcode(dut)
+
+    # 5. Random stress: AES/SHA/key with random data + random backpressure
+    await random_stress(dut)
+
+    # 6.idle check at the end
+    await ClockCycles(dut.clk, 20)
+    assert dut.CS.value == 1, "End-of-smoke: CS should be high (idle)"
+    assert dut.ACK_VALID.value == 0, "End-of-smoke: ACK_VALID should be low"
+    assert dut.VALID.value == 0, "End-of-smoke: no data driving bus"    
+    await check_qspi_idle(dut)
 
     dut._log.info("Full Smoke Test Complete")
