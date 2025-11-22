@@ -1,6 +1,6 @@
 module mem_transaction_fsm(
     input wire clk,
-    input wire rst_n,
+    input wire ,
 
     //command port
     input wire in_cmd_valid,

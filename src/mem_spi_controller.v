@@ -10,7 +10,7 @@ We also responsible setting our internal bit flag to “done” once transaction
 Clock Divider / Shifting FSM is already partially implemented by Ryan
 
 */
-module spi_controller (
+module mem_spi_controller (
     input wire clk, 
     input wire rst_n,
 
