@@ -95,7 +95,7 @@ module mem_transaction_fsm(
     localparam S_SEND_QE = 5'd22;
     localparam S_WAIT_DONE_JUMP = 5'd23;
     localparam S_WAIT_JUMP_TIMED = 5'd24;
-    localparam S_POLL_STATUS = 5'25;
+    localparam S_POLL_STATUS = 5'd25;
 
     localparam RD_KEY = 2'b00;
     localparam RD_TEXT = 2'b01;
