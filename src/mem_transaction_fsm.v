@@ -249,7 +249,7 @@ module mem_transaction_fsm(
                             need_pre_wren <= 1'b0;
                             out_spi_r_w <= 1'b1; //read
                         end
-                        2'b10: begin //WR_RES
+                        WR_RES: begin //WR_RES
                             flash_cmd_byte <= FLASH_PP;
                             total_bytes <= 16'd5; //cmd + 3 addr + 1 data (len is counted by status)
                             need_dummy <= 1'b0;
@@ -348,10 +348,11 @@ module mem_transaction_fsm(
 
                 S_RECV_DATA: begin
                     out_spi_rx_ready <= 1'b1;
-                    total_recv_bytes <= total_recv_bytes - 1;
 
                     if(in_spi_rx_valid) begin
                         out_wr_cp_data <= in_spi_rx_data;
+                        out_spi_rx_ready <= 1'b0;
+                        total_recv_bytes <= total_recv_bytes - 1;
 
                         if(in_wr_cp_ready) begin
                             out_wr_cp_data_valid <= 1'b1;
@@ -402,9 +403,17 @@ module mem_transaction_fsm(
                 jump_state = S_BOOT_WREN;
                 timer_expire = 10; //magic number, wait 4 cycles
             end
-            S_BOOT_WREN: next_state = S_BOOT_WREN_WAIT;
+            S_BOOT_WREN: begin
+                next_state = S_WAIT_JUMP_TIMED;
+                timer_expire = 2;
+                jump_state_timed = S_BOOT_WREN_WAIT;
+            end
             S_BOOT_WREN_WAIT: next_state = in_spi_done ? S_BOOT_GULK : S_BOOT_WREN_WAIT;
-            S_BOOT_GULK: next_state = S_BOOT_GULK_WAIT;
+            S_BOOT_GULK: begin
+                next_state = S_WAIT_JUMP_TIMED;
+                timer_expire = 2;
+                jump_state_timed = S_BOOT_GULK_WAIT;
+            end
             S_BOOT_GULK_WAIT: next_state = in_spi_done ? S_IDLE : S_BOOT_GULK_WAIT;
 
             //normal flow
@@ -439,59 +448,75 @@ module mem_transaction_fsm(
 
             S_SEND_QE: begin
                 if(gp_timer < 1) begin
-                    next_state = S_WAIT_DONE_JUMP;
+                    next_state = S_WAIT_JUMP_TIMED;
+                    jump_state_timed = S_WAIT_DONE_JUMP;
                     jump_state = S_SEND_QE;
+                    timer_expire = 2;
                 end 
                 else begin
-                    next_state = S_WAIT_DONE_JUMP;
+                    next_state = S_WAIT_JUMP_TIMED;
+                    jump_state_timed = S_WAIT_DONE_JUMP;
                     jump_state = S_SEND_CMD;
+                    timer_expire = 5;
                 end
             end
 
             S_SEND_CMD: begin
                 if(in_spi_tx_ready) begin
                     if(opcode_q == 2'b11) begin
-                        next_state = S_RECV_DATA; //RDSR
+                        jump_state_timed = S_RECV_DATA;
                     end else begin
-                        next_state = S_SEND_A2;
+                        jump_state_timed = S_SEND_A2;
                     end
+                    next_state = S_WAIT_JUMP_TIMED;
+                    timer_expire = 2;
                 end
             end
 
             S_SEND_A2: begin
                 if(in_spi_tx_ready) begin
-                    next_state = S_SEND_A1;
+                    next_state = S_WAIT_JUMP_TIMED;
+                    jump_state_timed = S_SEND_A1;
+                    timer_expire = 2;
                 end
             end
 
             S_SEND_A1: begin
                 if(in_spi_tx_ready) begin
-                    next_state = S_SEND_A0;
+                    next_state = S_WAIT_JUMP_TIMED;
+                    jump_state_timed = S_SEND_A0;
+                    timer_expire = 2;
                 end
             end
 
             S_SEND_A0: begin
                 if(in_spi_tx_ready) begin
                     if(need_dummy) begin
-                        next_state = S_SEND_DUMMY;
+                        jump_state_timed = S_SEND_DUMMY;
                     end else if(opcode_q == RD_KEY || opcode_q == RD_TEXT) begin
-                        next_state = S_RECV_DATA;
+                        jump_state_timed = S_RECV_DATA;
                     end else if(opcode_q == WR_RES) begin
-                        next_state = S_SEND_WDATA;
+                        jump_state_timed = S_SEND_WDATA;
                     end else begin
-                        next_state = S_WAIT_DONE;
+                        jump_state_timed = S_WAIT_DONE;
                     end
+                    next_state = S_WAIT_JUMP_TIMED;
+                    timer_expire = 2;
                 end
             end
 
             S_SEND_DUMMY: begin
-                //dummy is just 1 slot we tell qspi to insert
-                if(opcode_q == RD_KEY || opcode_q == RD_TEXT) begin
-                    next_state = S_RECV_DATA;
-                end else if(opcode_q == 2'b10) begin
-                    next_state = S_SEND_WDATA;
-                end else begin
-                    next_state = S_WAIT_DONE;
+                if(in_spi_tx_ready) begin
+                    //dummy is just 1 slot we tell qspi to insert
+                    if(opcode_q == RD_KEY || opcode_q == RD_TEXT) begin
+                        jump_state_timed = S_RECV_DATA;
+                    end else if(opcode_q == 2'b10) begin
+                        jump_state_timed = S_SEND_WDATA;
+                    end else begin
+                        jump_state_timed = S_WAIT_DONE;
+                    end
+                    next_state = S_WAIT_JUMP_TIMED;
+                    timer_expire = 2;
                 end
             end
 
@@ -500,14 +525,26 @@ module mem_transaction_fsm(
                 //     next_state = S_WAIT_DONE;
                 // end
                 if(in_status_op_done) begin
-                    next_state = S_WAIT_DONE;
+                    jump_state = S_WAIT_DONE;
                 end
+                else begin
+                    jump_state = S_SEND_WDATA;
+                end
+                jump_state_timed = S_WAIT_DONE_JUMP;
+                next_state = S_WAIT_JUMP_TIMED;
             end
 
             S_RECV_DATA: begin
                 if(total_recv_bytes == 0) begin
-                    next_state = S_WAIT_DONE;
+                    jump_state_timed = S_WAIT_DONE;
+                    next_state = S_WAIT_JUMP_TIMED;
                 end
+                else if(in_spi_rx_valid) begin
+                    jump_state_timed = S_RECV_DATA;
+                    next_state = S_WAIT_JUMP_TIMED;
+                end
+                else next_state = S_RECV_DATA;
+                timer_expire = 1;
             end
 
             S_WAIT_DONE: begin
