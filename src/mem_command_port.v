@@ -51,6 +51,10 @@ module mem_command_port(
     output reg address_valid,
     output reg [23:0] address
 );
+    initial begin
+        $dumpfile("mem_command_port.vcd");
+        $dumpvars(0, mem_command_port);
+    end
 
     // States
     localparam IDLE = 2'b00,
