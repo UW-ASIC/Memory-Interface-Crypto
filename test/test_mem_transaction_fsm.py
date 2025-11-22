@@ -38,18 +38,31 @@ async def status_done(dut):
     await RisingEdge(dut.clk)
     dut.in_status_op_done.value = 0
 
-
-async def spi_accept_init(dut):
-    while True:
-        await RisingEdge(dut.clk)
-        if dut.out_spi_valid.value == 1 and dut.out_spi_tx_data.value == 0x99:
-            dut.in_spi_tx_ready.value = 0
-            break
-
+async def accept_tx_spi_byte(dut, value):
+    await wait_signal_value(dut, "out_spi_tx_valid", 1)
+    await wait_signal_value(dut, "out_spi_tx_data", value)
+    dut.in_spi_tx_ready.value = 0
+    dut.in_spi_done.value = 0
     await ClockCycles(dut.clk, 8)
-    
-    
     dut.in_spi_tx_ready.value = 1
+    dut.in_spi_done.value = 1
+
+async def spi_accept_init(dut):    
+    set_batch_value(dut, 0, "in_spi_tx_ready", "in_spi_rx_valid", "in_spi_rx_data", "in_spi_done")
+    set_batch_value(dut, 1, "in_wr_cp_ready", "in_cmd_valid", "in_wr_data_valid")
+
+    await _reset(dut)
+
+    dut.in_spi_done.value = 0
+    dut.in_spi_tx_ready.value = 1
+   
+    await  accept_tx_spi_byte(dut, 0x99)
+
+    await  accept_tx_spi_byte(dut, 0x99)
+    await  accept_tx_spi_byte(dut, 0x06)
+    await  accept_tx_spi_byte(dut, 0x98)
+    await  accept_tx_spi_byte(dut, 0x31)
+    await  accept_tx_spi_byte(dut, 0x02)
 
 
 
@@ -91,9 +104,9 @@ async def mock_return_data(dut, transfer_len):
 
 async def mock_output_data(dut, transfer_len):
     dut.in_spi_tx_ready.value = 1
-    dut.in_wr_data_valid = 1
+    dut.in_wr_data_valid.value = 1
     for i in range(transfer_len): #256 bits
-        dut.in_cmd_data = i
+        dut.in_cmd_data.value = i
         await spi_accept_tx(dut, 1)
         if i > 0:
             # assert dut.out_spi_tx_valid.value == 1
@@ -178,10 +191,10 @@ async def test_wr_res_command(dut):
     dut.in_cmd_opcode.value = cm.WR_RES
     dut.in_cmd_addr.value = 0xAABBCC
     
-    dut.in_wr_data_valid = 1
+    dut.in_wr_data_valid.value = 1
     dut.in_cmd_data.value = 0xAB
 
-    await spi_startup(dut)
+    await spi_accept_init(dut)
 
     await with_timeout(mock_output_data(dut, 16), 800, timeout_unit = "us")
 
