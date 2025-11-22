@@ -62,17 +62,27 @@ module tt_um_mem_toplevel(
 
   wire [23:0] cp_fsm_address;
 
+  wire [7:0] cp_to_fsm_data;
+  wire [7:0] fsm_to_cp_data;
+
   mem_command_port cmdport_inst(
     .clk(clk),
     .rst_n(rst_n),
 
-    .bus_valid(bus[9]),
-    .bus_read(bus[8]),
-    .in_bus_data(bus[7:0]),
+    .bus_valid(VALID_IN),
+    .bus_ready(READY_IN),
+    .in_bus_data(DATA_IN),
+
+    .out_bus_valid(VALID),
+    .out_bus_ready(READY),
+    .out_bus_data(DATA),
 
     .ack_bus_req(ack_bus_req[2]),
     .ack_bus_id(ack_bus_req[1:0]),    
     .ack_bus_owned(ack_bus_ans),
+
+    .out_fsm_bus_data(cp_to_fsm_data);
+    .in_fsm_bus_data(fsm_to_cp_data);
 
     .address(cp_fsm_address)
   );

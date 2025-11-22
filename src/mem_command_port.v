@@ -10,43 +10,30 @@ module mem_command_port(
     input wire rst_n,
 
     // --- Bus ---
-    input wire bus_valid,
-    input wire bus_ready,
-    input wire drive_bus, // CMD port can drive the bus when drive_bus is high
+    input wire in_bus_valid,
+    input wire in_bus_ready,
     input wire [7:0] in_bus_data,
+
     output reg [7:0] out_bus_data,
     output reg out_bus_ready,
     output reg out_bus_valid,
     
     // --- Ack Bus ---
-    input wire ack_bus_owned,
-    output reg ack_bus_request,
-    output reg [1:0] ack_bus_id,
-
-    // Not needed, but still an input from the status module
-    input wire [6:0] status,
+    input wire in_ack_bus_owned,
+    output reg out_ack_bus_request,
+    output reg [1:0] out_ack_bus_id,
 
     // --- Transaction FSM ---
-    input wire txn_done,
-    input wire fsm_ready,
-    input wire fsm_valid,
-    output reg drive_fsm_bus, // CMD port can drive the FSM bus when drive_fsm_bus is high
-    input wire [7:0] in_fsm_bus_data,
-    output reg [7:0] out_fsm_bus_data,
-    output reg out_fsm_ready,
-    output reg out_fsm_valid,
+    output wire out_to_fsm_valid;
+    output wire out_to_fsm_ready;
+    output reg [7:0] out_fsm_data,
 
-    // --- outputs ---
-    output reg r_w, // 1 for read, 0 for write
-    output reg ena, // This is for enabling r_w (should be 0 if we're not reading or writing)
-    output reg ena_fsm,
-    output reg ena_qspi,
-    output reg ena_status,
-
-    // --- Length: goes to status module ---
-    output reg length_valid,
-    output reg [8:0] length,
+    input wire in_fsm_ready,
+    input wire in_fsm_valid,
+    input wire [7:0] in_fsm_data,
     
+    output wire out_fsm_enc_type,
+
     // --- Address: goes to qspi ---
     output reg address_valid,
     output reg [23:0] address
@@ -54,6 +41,50 @@ module mem_command_port(
     initial begin
         $dumpfile("results.vcd");
         $dumpvars(0, mem_command_port);
+    end
+
+    localparam MEM_ID = 2'b00;
+    localparam RD_KEY = 2'b00;
+    localparam RD_TEXT = 2'b01;
+    localparam WR_RES = 2'b10;
+    localparam OTHER = 2'b11;
+
+    localparam IDLE = 4'h0;
+    localparam CMD1 = 4'h1;
+    localparam CMD2 = 4'h2;
+    localparam CMD3 = 4'h3;
+
+    reg [3:0] state;
+
+    wire end_dec = in_bus_data[7];
+    wire [2:0] dest_id = in_bus_data[5:4];
+    wire [2:0] src_id = in_bus_data[3:2];
+    wire [2:0] opcode = in_bus_data[1:0];
+
+    always(@posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            out_bus_data <= 0;
+            out_bus_ready <= 0;
+            out_bus_valid <= 0;
+            out_ack_bus_id <= 0;
+            out_ack_bus_request <= 0;
+            out_to_fsm_ready <= 0;
+            out_to_fsm_valid <= 0;
+            out_fsm_bus_data <= 0;
+            state <= IDLE;
+        end
+        else begin
+            case(state)
+                IDLE:
+                    if(in_bus_valid) begin
+                        if(opcode != OTHER) begin
+                            if(opcode == WR_RES) begin
+                                
+                            end
+                        end
+                    end
+            endcase;
+        end
     end
 
     // States
