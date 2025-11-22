@@ -41,7 +41,7 @@ module mem_transaction_fsm(
     //to status
     output reg out_byte_done,      //pulse: 1 real data byte done
     output reg out_status_we,      //status[6]
-    output reg out_status_qe,      //status[5]
+    output wire out_status_qe,      //status[5]
     output reg [1:0] out_status_mode, //status[3:2]
     output reg out_swdo_start,     //kick short watchdog
     output reg out_lwdo_start,     //kick long watchdog
@@ -123,6 +123,8 @@ module mem_transaction_fsm(
     reg need_dummy;
     reg need_pre_wren;
 
+    assign out_status_qe = status_qe;
+
     //sequential
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -145,7 +147,6 @@ module mem_transaction_fsm(
             out_spi_dummy <= 1'b0;
             out_byte_done <= 1'b0;
             out_status_we <= 1'b0;
-            out_status_qe <= 1'b0;
             out_status_mode <= 2'b11; //default to 4 IOs
             out_swdo_start <= 1'b0;
             out_lwdo_start <= 1'b0;
