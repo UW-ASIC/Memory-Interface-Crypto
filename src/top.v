@@ -53,7 +53,7 @@ module tt_um_memory_interface (
     // FSM outputs
     wire drive_fsm_bus;
     wire out_fsm_ready;
-    wire [255:0] out_fsm_data;
+    wire [7:0] out_fsm_bus_data;
     wire out_fsm_valid;
 
     // --------------------------
@@ -84,7 +84,7 @@ module tt_um_memory_interface (
     // --------------------------
     // Module instantiation
     // --------------------------
-    host_cmd_port_v2 cmd_port_inst(
+    host_cmd_port cmd_port_inst(
         .clk(clk),
         .rst_n(rst_n),
 
@@ -112,7 +112,7 @@ module tt_um_memory_interface (
         .drive_fsm_bus(drive_fsm_bus),
         .in_fsm_bus_data(in_fsm_bus_data),
         .out_fsm_ready(out_fsm_ready),
-        .out_fsm_data(out_fsm_data),
+        .out_fsm_bus_data(out_fsm_bus_data),
         .out_fsm_valid(out_fsm_valid),
 
         // --- CMD outputs ---
