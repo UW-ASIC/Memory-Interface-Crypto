@@ -36,6 +36,26 @@ module tt_um_mem_toplevel(
   wire spi_rw;
   wire status_qe;
   
+  wire data_bus[9:0];
+  wire ack_bus_req[2:0];
+  wire ack_bus_ans;
+
+  wire [23:0] cp_fsm_address;
+
+  mem_command_port cmdport_inst(
+    .clk(clk),
+    .rst_n(rst_n),
+
+    .bus_valid(bus[9]),
+    .bus_read(bus[8]),
+    .in_bus_data(bus[7:0]),
+
+    .ack_bus_req(ack_bus_req[2]),
+    .ack_bus_id(ack_bus_req[1:0]),    
+    .ack_bus_owned(ack_bus_ans),
+
+    .address(cp_fsm_address)
+  );
 
   mem_transaction_fsm fsm_inst(
     .clk(clk),
@@ -77,7 +97,6 @@ module tt_um_mem_toplevel(
     .io_ena(uio_oe[3:0]),
     .in_io(uio_in[3:0]),
     .out_io(uio_out[3:0])
-  )
-
+  );
 
 endmodule

@@ -52,7 +52,7 @@ module mem_command_port(
     output reg [23:0] address
 );
     initial begin
-        $dumpfile("mem_command_port.vcd");
+        $dumpfile("results.vcd");
         $dumpvars(0, mem_command_port);
     end
 

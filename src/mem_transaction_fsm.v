@@ -51,7 +51,7 @@ module mem_transaction_fsm(
 );
     // Dump the signals to a VCD file. You can view it with gtkwave or surfer.
     initial begin
-        $dumpfile("mem_transaction_fsm.vcd");
+        $dumpfile("results.vcd");
         $dumpvars(0, mem_transaction_fsm);
         #1;
     end
