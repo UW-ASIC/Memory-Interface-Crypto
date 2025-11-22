@@ -3,38 +3,54 @@
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles
+from cocotb.triggers import ClockCycles, RisingEdge, with_timeout
+from common import _reset, wait_signal_high
+import common as cm
 
 
 @cocotb.test()
-async def test_project(dut):
-    dut._log.info("Start")
-
+async def test_reset(dut):
     # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, units="us")
     cocotb.start_soon(clock.start())
 
-    # Reset
-    dut._log.info("Reset")
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
+    await _reset(dut)
 
-    dut._log.info("Test project behavior")
+    assert dut.out_busy.value == 0
+    assert dut.out_tx_ready.value == 1
+    assert dut.out_sclk.value == 0
+    assert dut.out_io == 0 #defaults to input
+    assert dut.out_cs_n == 0
 
-    # Set the input values you want to test
-    dut.ui_in.value = 20
-    dut.uio_in.value = 30
+@cocotb.test()
+async def test_spi_send_quad(dut):
+    # Set the clock period to 10 us (100 KHz)
+    clock = Clock(dut.clk, 10, units="us")
+    cocotb.start_soon(clock.start())
 
-    # Wait for one clock cycle to see the output values
-    await ClockCycles(dut.clk, 1)
+    await _reset(dut)
 
-    # The following assersion is just an example of how to check the output values.
-    # Change it to match the actual expected output of your module:
-    assert dut.uo_out.value == 50
+    dut.in_start.value = 1
+    dut.in_tx_valid = 1
 
-    # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
+    ref_data = [0xAB, 0xCD, 0xEF]
+    
+    for i in range(3):
+        ref = ref_data[i]
+        dut.in_tx_data.value = ref
+        for j in range(2):
+            await with_timeout(RisingEdge(dut.clk), 10, timeout_unit="us")
+            assert dut.out_io.value == ref & 0x0F
+            ref = ref >> 4
+    
+@cocotb.test()
+async def test_spi_recv_quad(dut):
+    pass
+
+@cocotb.test()
+async def test_io_enable(dut):
+    pass
+
+@cocotb.test()
+async def test_fsm_handshake(dut):
+    pass
