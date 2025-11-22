@@ -53,7 +53,6 @@ async def spi_accept_init(dut):
 
     await _reset(dut)
 
-    dut.in_spi_done.value = 0
     dut.in_spi_tx_ready.value = 1
    
     await  accept_tx_spi_byte(dut, 0x99)
@@ -67,30 +66,6 @@ async def spi_accept_init(dut):
 
 
     
-
-
-# ----------------------------------------------------------------------
-# Harry's Tests
-# ----------------------------------------------------------------------
-
-@cocotb.test()
-async def test_reset(dut): 
-    # Set the clock period to 10 us (100 KHz)
-    clock = Clock(dut.clk, 10, units="us")
-    cocotb.start_soon(clock.start())
-
-    await _reset(dut)
-
-    assert dut.out_fsm_cmd_ready.value == 0, "out_fsm_cmd_ready should be 0 after reset"
-    assert dut.out_fsm_data_ready.value == 0, "out_fsm_data_ready should be 0 after reset"
-
-    assert dut.out_wr_cp_data_valid.value == 0, "out_wr_cp_data_valid should be 0 after reset"
-    # assert dut.out_wr_cp_enc_type.value in (0, 1), "out_wr_cp_enc_type should be 0 or 1 after reset"
-
-    assert dut.out_spi_start.value == 0, "out_spi_start should be 0 after reset"
-
-    assert dut.out_spi_tx_valid.value == 0, "out_spi_tx_valid should be 0 after reset"
-    assert dut.out_spi_rx_ready.value == 0, "out_spi_rx_ready should be 0 after reset"
 
 
 async def mock_return_data(dut, transfer_len):
@@ -111,6 +86,7 @@ async def mock_output_data(dut, transfer_len):
         if i > 0:
             # assert dut.out_spi_tx_valid.value == 1
             assert dut.out_spi_tx_data.value == i
+        await ClockCycles(dut.clk, 8)
     return True
     
 async def spi_startup(dut):
@@ -135,6 +111,50 @@ def set_batch_value(dut, val, *to_set):
     for sig in to_set:
         getattr(dut, sig).value = val
     
+# ----------------------------------------------------------------------
+# Harry's Tests
+# ----------------------------------------------------------------------
+
+@cocotb.test()
+async def test_reset(dut): 
+    # Set the clock period to 10 us (100 KHz)
+    clock = Clock(dut.clk, 10, units="us")
+    cocotb.start_soon(clock.start())
+
+    await _reset(dut)
+
+    assert dut.out_fsm_cmd_ready.value == 0, "out_fsm_cmd_ready should be 0 after reset"
+    assert dut.out_fsm_data_ready.value == 0, "out_fsm_data_ready should be 0 after reset"
+
+    assert dut.out_wr_cp_data_valid.value == 0, "out_wr_cp_data_valid should be 0 after reset"
+    # assert dut.out_wr_cp_enc_type.value in (0, 1), "out_wr_cp_enc_type should be 0 or 1 after reset"
+
+    assert dut.out_spi_start.value == 0, "out_spi_start should be 0 after reset"
+
+    assert dut.out_spi_tx_valid.value == 0, "out_spi_tx_valid should be 0 after reset"
+    assert dut.out_spi_rx_ready.value == 0, "out_spi_rx_ready should be 0 after reset"
+
+@cocotb.test()
+async def test_spi_startup(dut):
+    # Set the clock period to 10 us (100 KHz)
+    clock = Clock(dut.clk, 10, units="us")
+    cocotb.start_soon(clock.start())
+
+    set_batch_value(dut, 0, "in_spi_tx_ready", "in_spi_rx_valid", "in_spi_rx_data", "in_spi_done")
+    set_batch_value(dut, 1, "in_wr_cp_ready", "in_cmd_valid", "in_wr_data_valid")
+
+    await _reset(dut)
+
+    dut.in_cmd_valid.value = 1
+    dut.in_cmd_opcode.value = cm.RD_TEXT
+    dut.in_cmd_addr.value = 0xAABBCC
+    
+    dut.in_wr_data_valid.value = 1
+
+    dut.in_spi_tx_ready.value = 1
+   
+    await accept_tx_spi_byte(dut, 0x99)
+
 @cocotb.test()
 async def test_rd_key_command(dut):
     # Not applicable for SHA, for AES expect to take in a 256 bit key    
@@ -196,7 +216,7 @@ async def test_wr_res_command(dut):
 
     await spi_accept_init(dut)
 
-    await with_timeout(mock_output_data(dut, 16), 800, timeout_unit = "us")
+    await with_timeout(mock_output_data(dut, 16), 2000, timeout_unit = "us")
 
 # @cocotb.test()
 # async def test_cp_handshake(dut):
