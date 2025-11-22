@@ -33,10 +33,6 @@ module mem_command_port(
     input wire [7:0] in_fsm_data,
     
     output wire out_fsm_enc_type,
-
-    // --- Address: goes to qspi ---
-    output reg address_valid,
-    output reg [23:0] address
 );
     initial begin
         $dumpfile("results.vcd");
