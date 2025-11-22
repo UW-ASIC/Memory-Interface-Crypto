@@ -24,6 +24,26 @@ module tt_um_mem_toplevel(
   // List all unused inputs to prevent warnings
   wire _unused = &{ena, clk, rst_n, 1'b0};
 
+// #  To tt output ctrl
+// #  uio_oe[3:0]
+
+  wire READY;
+  wire VALID;
+  wire [7:0] DATA;
+
+  wire READY_IN;
+  wire VALID_IN;
+  wire [7:0] DATA_IN;
+
+  wire ACK_READY;
+  wire ACK_VALID;
+  wire [1:0] MODULE_SOURCE_ID;
+
+  wire ACK_VALID_IN;
+  wire SOURCE_ID_IN;
+
+  wire CS, IO0, IO1, IO2, IO3, SCLK;
+ 
 
   wire spi_start = 0;
   wire spi_done = 0;
