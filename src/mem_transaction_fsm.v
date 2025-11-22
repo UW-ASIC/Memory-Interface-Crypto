@@ -61,6 +61,7 @@ module mem_transaction_fsm(
     localparam [7:0] OPC_RESET = 8'h99;
     localparam [7:0] OPC_WREN = 8'h06;
     localparam [7:0] OPC_GLOBAL_UNLOCK = 8'h98;
+    localparam [7:0] OPC_QE = 8'h31;
     localparam [7:0] FLASH_READ = 8'h6B; //fast read quad output (needs dummy)
     localparam [7:0] FLASH_PP = 8'h32; //quad input page program (no dummy)
     localparam [7:0] FLASH_SE = 8'h20;
@@ -91,12 +92,20 @@ module mem_transaction_fsm(
     localparam S_WAIT_DONE = 5'd20;
     localparam S_FINISH = 5'd21;
 
+    localparam S_SEND_QE = 5'd22;
+
     localparam RD_KEY = 2'b00;
     localparam RD_TEXT = 2'b01;
     localparam WR_RES = 2'b10;
 
     reg [4:0] state;
     reg [4:0] next_state;
+
+    reg [3:0] rst_wait;
+    wire [3:0] t_rst = 4;
+    reg [3:0] gp_counter;
+
+    reg status_qe;
 
     //latched command
     reg [1:0] opcode_q;
@@ -136,6 +145,10 @@ module mem_transaction_fsm(
             out_gwdo_start <= 1'b0;
             need_dummy <= 1'b0;
             need_pre_wren <= 1'b0;
+
+            status_qe <= 0;
+            gp_counter <= 0;
+            rst_wait <= 0;
         end else begin
         state <= next_state;
 
@@ -178,6 +191,7 @@ module mem_transaction_fsm(
 
                 S_BOOT_RST_WAIT: begin
                     //wait
+                    if(rst_wait <= t_rst) rst_wait <= rst_wait + 1;
                 end
 
                 S_BOOT_WREN: begin
@@ -186,11 +200,13 @@ module mem_transaction_fsm(
                     out_spi_tx_valid <= 1'b1;
                     out_spi_tx_data <= OPC_WREN;
                     out_spi_r_w <= 1'b0;
-                    out_status_we <= 1'b1;
+                    out_status_we <= 1'b1; 
                 end
 
                 S_BOOT_WREN_WAIT: begin
                     //wait
+                    //also wait for 10 clock cycles for tRST
+                    // if(rst_wait <= t_rst) rst_wait <= rst_wait + 1;
                 end
 
                 S_BOOT_GULK: begin
@@ -258,6 +274,7 @@ module mem_transaction_fsm(
                     out_spi_tx_data <= OPC_WREN;
                     out_spi_r_w <= 1'b0;
                     out_status_we <= 1'b1;
+                    rst_wait <= 0;
                 end
 
                 S_PRE_WREN_WAIT: begin
@@ -267,7 +284,15 @@ module mem_transaction_fsm(
                 S_START_SPI: begin
                     out_spi_start <= 1'b1;
                     out_spi_num_bytes <= total_bytes;
+                    gp_counter <= 0;
                 end
+
+                S_SEND_QE: begin
+                    out_spi_tx_valid <= 1'b1;
+                    if(gp_counter == 0) out_spi_tx_data <= OPC_QE;
+                    else out_spi_tx_data <= 8'b00000010;
+                    gp_counter <= gp_counter + 1;
+                end    
 
                 S_SEND_CMD: begin
                     if(in_spi_tx_ready) begin
@@ -351,7 +376,7 @@ module mem_transaction_fsm(
             S_BOOT_ENA: next_state = S_BOOT_ENA_WAIT;
             S_BOOT_ENA_WAIT: next_state = in_spi_done ? S_BOOT_RST : S_BOOT_ENA_WAIT;
             S_BOOT_RST: next_state = S_BOOT_RST_WAIT;
-            S_BOOT_RST_WAIT: next_state = in_spi_done ? S_BOOT_WREN : S_BOOT_RST_WAIT;
+            S_BOOT_RST_WAIT: next_state = (in_spi_done && rst_wait >= t_rst) ? S_BOOT_WREN : S_BOOT_RST_WAIT;
             S_BOOT_WREN: next_state = S_BOOT_WREN_WAIT;
             S_BOOT_WREN_WAIT: next_state = in_spi_done ? S_BOOT_GULK : S_BOOT_WREN_WAIT;
             S_BOOT_GULK: next_state = S_BOOT_GULK_WAIT;
@@ -384,6 +409,11 @@ module mem_transaction_fsm(
 
             S_START_SPI: begin
                 next_state = S_SEND_CMD;
+                if(!status_qe) next_state = S_SEND_QE;
+            end
+
+            S_SEND_QE: begin
+                if(gp_counter >= 1) next_state = S_SEND_CMD;
             end
 
             S_SEND_CMD: begin
