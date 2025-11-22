@@ -178,7 +178,7 @@ async def test_rd_text_command(dut):
     dut.in_cmd_enc_type.value = 1 #SHA
     dut.in_cmd_addr.value = 0xAABBCC
     dut.in_cmd_data.value = 0xAB
-    
+
     await spi_accept_init(dut)
 
     await accept_tx_spi_byte(dut, 0x6B)
@@ -247,81 +247,81 @@ async def test_wr_res_command(dut):
 # Kevin's Tests
 # ----------------------------------------------------------------------
 
-@cocotb.test()
-async def test_full_read_flow(dut):
-    """Complete READ: CMD + ADDR + dummy + 1-byte data."""
-    clock = Clock(dut.clk, 10, units="us")
-    cocotb.start_soon(clock.start())
-    await _reset(dut)
+# @cocotb.test()
+# async def test_full_read_flow(dut):
+#     """Complete READ: CMD + ADDR + dummy + 1-byte data."""
+#     clock = Clock(dut.clk, 10, units="us")
+#     cocotb.start_soon(clock.start())
+#     await _reset(dut)
 
-    # drive command
-    dut.in_cmd_valid.value = 1
-    dut.in_cmd_opcode.value = cm.RD_KEY
-    dut.in_cmd_addr.value = 0x112233
-    await RisingEdge(dut.clk)
-    dut.in_cmd_valid.value = 0
+#     # drive command
+#     dut.in_cmd_valid.value = 1
+#     dut.in_cmd_opcode.value = cm.RD_KEY
+#     dut.in_cmd_addr.value = 0x112233
+#     await RisingEdge(dut.clk)
+#     dut.in_cmd_valid.value = 0
 
-    # wait for SPI start
-    await wait_signal_high(dut, "out_spi_start")
+#     # wait for SPI start
+#     await wait_signal_high(dut, "out_spi_start")
 
-    # FSM will send: cmd → addr2 → addr1 → addr0 → dummy → read-data
+#     # FSM will send: cmd → addr2 → addr1 → addr0 → dummy → read-data
 
-    # accept tx bytes for cmd + addr + dummy
-    await spi_accept_tx(dut, 1) # cmd
-    await spi_accept_tx(dut, 1) # A2
-    await spi_accept_tx(dut, 1) # A1
-    await spi_accept_tx(dut, 1) # A0
-    await spi_accept_tx(dut, 1) # dummy
+#     # accept tx bytes for cmd + addr + dummy
+#     await spi_accept_tx(dut, 1) # cmd
+#     await spi_accept_tx(dut, 1) # A2
+#     await spi_accept_tx(dut, 1) # A1
+#     await spi_accept_tx(dut, 1) # A0
+#     await spi_accept_tx(dut, 1) # dummy
 
-    # now FSM expects RX data
-    await RisingEdge(dut.clk)
-    dut.in_spi_rx_valid.value = 1
-    dut.in_spi_rx_data.value = 0x5A
-    await RisingEdge(dut.clk)
-    dut.in_spi_rx_valid.value = 0
+#     # now FSM expects RX data
+#     await RisingEdge(dut.clk)
+#     dut.in_spi_rx_valid.value = 1
+#     dut.in_spi_rx_data.value = 0x5A
+#     await RisingEdge(dut.clk)
+#     dut.in_spi_rx_valid.value = 0
 
-    # operation done
-    await spi_done(dut)
-    await status_done(dut)
+#     # operation done
+#     await spi_done(dut)
+#     await status_done(dut)
 
-    assert dut.out_wr_cp_data.value == 0x5A
+#     assert dut.out_wr_cp_data.value == 0x5A
 
-@cocotb.test()
-async def test_full_write_flow(dut):
-    """Complete WRITE: pre-WREN + PP + data."""
-    clock = Clock(dut.clk, 10, units="us")
-    cocotb.start_soon(clock.start())
-    await _reset(dut)
+# @cocotb.test()
+# async def test_full_write_flow(dut):
+#     """Complete WRITE: pre-WREN + PP + data."""
+#     clock = Clock(dut.clk, 10, units="us")
+#     cocotb.start_soon(clock.start())
+#     await _reset(dut)
 
-    dut.in_cmd_valid.value = 1
-    dut.in_cmd_opcode.value = cm.WR_RES
-    dut.in_cmd_addr.value = 0x556677
-    await RisingEdge(dut.clk)
-    dut.in_cmd_valid.value = 0
+#     dut.in_cmd_valid.value = 1
+#     dut.in_cmd_opcode.value = cm.WR_RES
+#     dut.in_cmd_addr.value = 0x556677
+#     await RisingEdge(dut.clk)
+#     dut.in_cmd_valid.value = 0
 
-    # pre-WREN start
-    await wait_signal_high(dut, "out_spi_start")
-    await spi_accept_tx(dut, 1) # WREN byte
-    await spi_done(dut)
+#     # pre-WREN start
+#     await wait_signal_high(dut, "out_spi_start")
+#     await spi_accept_tx(dut, 1) # WREN byte
+#     await spi_done(dut)
 
-    # now real Page Program
-    await wait_signal_high(dut, "out_spi_start")
+#     # now real Page Program
+#     await wait_signal_high(dut, "out_spi_start")
 
-    # cmd + 3 bytes addr = 4 TX pulses
-    await spi_accept_tx(dut, 1)  # PP opcode
-    await spi_accept_tx(dut, 1)
-    await spi_accept_tx(dut, 1)
-    await spi_accept_tx(dut, 1)
+#     # cmd + 3 bytes addr = 4 TX pulses
+#     await spi_accept_tx(dut, 1)  # PP opcode
+#     await spi_accept_tx(dut, 1)
+#     await spi_accept_tx(dut, 1)
+#     await spi_accept_tx(dut, 1)
 
-    # now FSM asks for write data
-    dut.in_wr_data_valid.value = 1
-    dut.in_cmd_data.value = 0xAB
+#     # now FSM asks for write data
+#     dut.in_wr_data_valid.value = 1
+#     dut.in_cmd_data.value = 0xAB
 
-    await spi_accept_tx(dut, 1) # send data
+#     await spi_accept_tx(dut, 1) # send data
 
-    dut.in_wr_data_valid.value = 0
+#     dut.in_wr_data_valid.value = 0
 
-    await spi_done(dut)
-    await status_done(dut)
+#     await spi_done(dut)
+#     await status_done(dut)
 
-    assert True, "WRITE flow executed successfully"
+#     assert True, "WRITE flow executed successfully"

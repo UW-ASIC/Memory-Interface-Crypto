@@ -95,6 +95,7 @@ module mem_transaction_fsm(
     localparam S_SEND_QE = 5'd22;
     localparam S_WAIT_DONE_JUMP = 5'd23;
     localparam S_WAIT_JUMP_TIMED = 5'd24;
+    localparam S_POLL_STATUS = 5'25;
 
     localparam RD_KEY = 2'b00;
     localparam RD_TEXT = 2'b01;
@@ -109,6 +110,7 @@ module mem_transaction_fsm(
     wire [3:0] t_rst = 4;
     reg [3:0] gp_timer;
     reg [3:0] timer_expire = 0;
+    reg [7:0] flash_status_reg;
 
     reg status_qe;
 
@@ -344,6 +346,14 @@ module mem_transaction_fsm(
                         out_spi_tx_data <= in_cmd_data;
                         out_byte_done <= 1'b1;
                     end
+                end    
+
+                S_POLL_STATUS: begin
+                    out_spi_tx_valid = 1;
+                    out_spi_rx_ready = 1;
+
+                    flash_status_reg = 1;
+                    if(in_spi_rx_valid) flash_status_reg <= in_spi_rx_data;
                 end
 
                 S_RECV_DATA: begin
@@ -525,7 +535,7 @@ module mem_transaction_fsm(
                 //     next_state = S_WAIT_DONE;
                 // end
                 if(in_status_op_done) begin
-                    jump_state = S_WAIT_DONE;
+                    jump_state = S_POLL_STATUS;
                 end
                 else begin
                     jump_state = S_SEND_WDATA;
@@ -533,6 +543,14 @@ module mem_transaction_fsm(
                 jump_state_timed = S_WAIT_DONE_JUMP;
                 next_state = S_WAIT_JUMP_TIMED;
             end
+
+            S_POLL_STATUS: begin
+                if(flash_status_reg[0] == 0) next_state = S_FINISH;
+                else begin
+                    
+                end
+            end
+
 
             S_RECV_DATA: begin
                 if(total_recv_bytes == 0) begin
