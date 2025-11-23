@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-module tt_um_mem_toplevel(
+module mem_toplevel(
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
     input  wire [7:0] uio_in,   // IOs: Input path
@@ -15,14 +15,6 @@ module tt_um_mem_toplevel(
     input  wire       clk,      // clock
     input  wire       rst_n     // reset_n - low to reset
 );
-
-  // All output pins must be assigned. If not used, assign to 0.
-  assign uo_out  = ui_in + uio_in;  // Example: ou_out is the sum of ui_in and uio_in
-  assign uio_out = 0;
-  assign uio_oe  = 0;
-
-  // List all unused inputs to prevent warnings
-  wire _unused = &{ena, clk, rst_n, 1'b0};
 
 // #  To tt output ctrl
 // #  uio_oe[3:0]
@@ -35,16 +27,15 @@ module tt_um_mem_toplevel(
   wire VALID_IN;
   wire [7:0] DATA_IN;
 
-  wire ACK_READY;
-  wire ACK_VALID;
-  wire [1:0] MODULE_SOURCE_ID;
+  // wire ACK_READY;
+  // wire ACK_VALID;
+  // wire [1:0] MODULE_SOURCE_ID;
 
-  wire ACK_VALID_IN;
-  wire SOURCE_ID_IN;
+  // wire ACK_VALID_IN;
+  // wire SOURCE_ID_IN;
 
-  wire CS, IO0, IO1, IO2, IO3, SCLK;
+  // wire CS, IO0, IO1, IO2, IO3, SCLK;
  
-
   wire spi_start = 0;
   wire spi_done = 0;
   wire [7:0] spi_tx_data = 0;
