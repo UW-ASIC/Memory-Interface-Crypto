@@ -6,20 +6,20 @@
 `default_nettype none
 
 module mem_toplevel(
-    wire in_bus_ready;
-    wire in_bus_valid;
-    wire [7:0] in_bus_data;
+    input wire in_bus_ready,
+    input wire in_bus_valid,
+    input wire [7:0] in_bus_data,
 
-    wire out_bus_ready;
-    wire out_bus_valid;
-    wire [7:0] out_bus_data;
+    input wire out_bus_ready,
+    input wire out_bus_valid,
+    input wire [7:0] out_bus_data,
 
-    output wire [3:0] mem_qspi_output_enable;
-    output wire [3:0] mem_qspi_out;
-    output wire sclk_mem;
-    output wire n_cs_mem;
+    output wire [3:0] mem_qspi_output_enable,
+    output wire [3:0] mem_qspi_out,
+    output wire sclk_mem,
+    output wire n_cs_mem,
 
-    input wire [3:0] mem_qspi_in;
+    input wire [3:0] mem_qspi_in,
 
     input  wire       ena,      // always 1 when the design is powered, so you can ignore it
     input  wire       clk,      // clock
@@ -50,13 +50,13 @@ module mem_toplevel(
     .clk(clk),
     .rst_n(rst_n),
 
-    .in_bus_valid(VALID_IN),
-    .in_bus_ready(READY_IN),
-    .in_bus_data(DATA_IN),
+    .in_bus_valid(in_bus_valid),
+    .in_bus_ready(in_bus_ready),
+    .in_bus_data(in_bus_data),
 
-    .out_bus_valid(VALID),
-    .out_bus_ready(READY),
-    .out_bus_data(DATA),
+    .out_bus_valid(out_bus_valid),
+    .out_bus_ready(out_bus_ready),
+    .out_bus_data(out_bus_data),
 
     .out_ack_bus_request(ack_bus[2]),
     .out_ack_bus_id(ack_bus[1:0]),    
