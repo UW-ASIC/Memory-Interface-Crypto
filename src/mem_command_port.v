@@ -24,14 +24,14 @@ module mem_command_port(
     output reg [1:0] out_ack_bus_id,
 
     // --- Transaction FSM ---
-    output wire out_to_fsm_valid;
-    output wire out_to_fsm_ready;
+    output reg out_fsm_valid,
+    output reg out_fsm_ready,
     output reg [7:0] out_fsm_data,
 
     input wire in_fsm_ready,
     input wire in_fsm_valid,
     input wire [7:0] in_fsm_data,
-    input wire in_fsm_done;
+    input wire in_fsm_done,
     
     output reg out_fsm_enc_type,
     output reg [2:0] out_fsm_opcode
@@ -60,22 +60,22 @@ module mem_command_port(
     reg [7:0] counter = 0;
     reg [23:0] address;
 
-    wire end_dec = in_bus_data[7];
+    wire enc_dec = in_bus_data[7];
     wire [2:0] dest_id = in_bus_data[5:4];
     wire [2:0] src_id = in_bus_data[3:2];
     wire [2:0] opcode = in_bus_data[1:0];
 
 
-    always(@posedge clk or negedge rst_n) begin
+    always @(posedge clk or negedge rst_n) begin
         if(!rst_n) begin
             out_bus_data <= 0;
             out_bus_ready <= 0;
             out_bus_valid <= 0;
             out_ack_bus_id <= 0;
             out_ack_bus_request <= 0;
-            out_to_fsm_ready <= 0;
-            out_to_fsm_valid <= 0;
-            out_fsm_bus_data <= 0;
+            out_fsm_ready <= 0;
+            out_fsm_valid <= 0;
+            out_fsm_data <= 0;
             counter <= 0;
             state <= IDLE;
             address <= 0;
@@ -83,9 +83,9 @@ module mem_command_port(
         else begin
             case(state)
                 IDLE: begin
-                    out_fsm_cmd_ready <= 0;
+                    out_fsm_ready <= 0;
                     if(in_bus_valid && opcode != OTHER) begin
-                        case(opcode):
+                        case(opcode)
                             RD_KEY, RD_TEXT: begin
                                 if(dest_id == MEM_ID) state <= PASS_CMD;
                             end
@@ -98,28 +98,30 @@ module mem_command_port(
                     end
                 end
 
-                PASS_CMD:
+                PASS_CMD: begin
                     if(in_bus_valid) begin
-                        out_bus_ready <= 0
-                        address[counter + 7 : 0] <= in_bus_data;
+                        out_bus_ready <= 0;
+                        address[counter + 7 -: 8] <= in_bus_data;
                         counter <= counter + 8;
                     end else out_bus_ready <= 1;
                     if(counter >= 23) begin
                         out_fsm_valid <= 1;
-                        next_state <= PERFORM_TRANSFER;
+                        state <= PERFORM_TRANSFER;
                     end
+                end
 
-                PERFORM_TRANSFER:
-                    if(in_fsm_done) next_state <= TRY_ACK;
+                PERFORM_TRANSFER: begin
+                    if(in_fsm_done) state <= TRY_ACK;
                     if(out_fsm_opcode == WR_RES) begin
                         out_bus_valid <= in_fsm_valid;
-                        out_bus_data <= in_fsm_bus_data;
+                        out_bus_data <= in_fsm_data;
                         out_fsm_ready <= in_bus_ready;
                     end else begin
                         out_fsm_valid <= in_bus_valid;
                         out_fsm_data <= in_bus_data;
                         out_bus_ready <= in_fsm_ready;
                     end
+                end
                         
                 TRY_ACK: begin
                     out_ack_bus_request <= 1;
