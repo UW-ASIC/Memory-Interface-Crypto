@@ -5,7 +5,7 @@
 SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES ?= mem_command_port.v mem_spi_controller.v mem_status_poller.v mem_transaction_fsm.v
+PROJECT_SOURCES ?= mem_command_port.v mem_spi_controller.v mem_status_poller.v mem_transaction_fsm.v tt_um_mem_toplevel.v
 
 ifneq ($(GATES),yes)
 

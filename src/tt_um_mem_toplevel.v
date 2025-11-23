@@ -56,8 +56,8 @@ module tt_um_mem_toplevel(
   wire spi_rw;
   wire status_qe;
   
-  wire data_bus[9:0];
-  wire ack_bus_req[2:0];
+  wire [9:0] data_bus;
+  wire [2:0] ack_bus;
   wire ack_bus_ans;
 
   wire [23:0] cp_fsm_address;
@@ -69,22 +69,22 @@ module tt_um_mem_toplevel(
     .clk(clk),
     .rst_n(rst_n),
 
-    .bus_valid(VALID_IN),
-    .bus_ready(READY_IN),
+    .in_bus_valid(VALID_IN),
+    .in_bus_ready(READY_IN),
     .in_bus_data(DATA_IN),
 
     .out_bus_valid(VALID),
     .out_bus_ready(READY),
     .out_bus_data(DATA),
 
-    .ack_bus_req(ack_bus_req[2]),
-    .ack_bus_id(ack_bus_req[1:0]),    
-    .ack_bus_owned(ack_bus_ans),
+    .out_ack_bus_request(ack_bus[2]),
+    .out_ack_bus_id(ack_bus[1:0]),    
+    .in_ack_bus_owned(ack_bus_ans),
 
-    .out_fsm_bus_data(cp_to_fsm_data);
-    .in_fsm_bus_data(fsm_to_cp_data);
+    .out_fsm_data(cp_to_fsm_data),
+    .in_fsm_data(fsm_to_cp_data),
 
-    .address(cp_fsm_address)
+    .out_address(cp_fsm_address)
   );
 
   mem_transaction_fsm fsm_inst(
@@ -95,7 +95,7 @@ module tt_um_mem_toplevel(
     .in_spi_rx_data(spi_rx_data),
     .in_spi_rx_valid(spi_rx_valid),
 
-    .in_spi_tx_ready(spi_tx_ready);
+    .in_spi_tx_ready(spi_tx_ready),
 
     .out_spi_tx_data(spi_tx_data),
     .out_spi_tx_valid(spi_tx_valid),
@@ -110,9 +110,9 @@ module tt_um_mem_toplevel(
 
   mem_spi_controller controller_inst(
     .clk(clk),
-    .rst_n(rst_n)
+    .rst_n(rst_n),
 
-    .in_start(out_spi_start),
+    .in_start(spi_start),
     .r_w(spi_rw),
     .quad_enable(status_qe),
 

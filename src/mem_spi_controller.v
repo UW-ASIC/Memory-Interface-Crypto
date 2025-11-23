@@ -39,11 +39,6 @@ module mem_spi_controller (
     output reg [3:0] io_ena
 );
 // Dump the signals to a VCD file. You can view it with gtkwave or surfer.
-initial begin 
-    $dumpfile("module_name.vcd"); 
-    $dumpvars(0, spi_controller); 
-    #1; 
-end
 
 localparam DIVIDER = 1; //divider == 1 means half frequency, divider == 2 means quarter frequency 
 

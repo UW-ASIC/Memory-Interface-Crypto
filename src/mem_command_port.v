@@ -34,13 +34,9 @@ module mem_command_port(
     input wire in_fsm_done,
     
     output reg out_fsm_enc_type,
-    output reg [2:0] out_fsm_opcode
+    output reg [2:0] out_fsm_opcode,
+    output reg [23:0] out_address
 );
-    initial begin
-        $dumpfile("results.vcd");
-        $dumpvars(0, mem_command_port);
-    end
-
     localparam MEM_ID = 2'b00;
     localparam SHA_ID = 2'b01;
     localparam AES_ID = 2'b10;
@@ -58,7 +54,6 @@ module mem_command_port(
 
     reg [3:0] state;
     reg [7:0] counter = 0;
-    reg [23:0] address;
 
     wire enc_dec = in_bus_data[7];
     wire [2:0] dest_id = in_bus_data[5:4];
@@ -78,7 +73,7 @@ module mem_command_port(
             out_fsm_data <= 0;
             counter <= 0;
             state <= IDLE;
-            address <= 0;
+            out_address <= 0;
         end
         else begin
             case(state)
@@ -101,7 +96,7 @@ module mem_command_port(
                 PASS_CMD: begin
                     if(in_bus_valid) begin
                         out_bus_ready <= 0;
-                        address[counter + 7 -: 8] <= in_bus_data;
+                        out_address[counter + 7 -: 8] <= in_bus_data;
                         counter <= counter + 8;
                     end else out_bus_ready <= 1;
                     if(counter >= 23) begin
