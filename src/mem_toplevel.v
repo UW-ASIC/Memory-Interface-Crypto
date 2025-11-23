@@ -6,36 +6,26 @@
 `default_nettype none
 
 module mem_toplevel(
-    input  wire [7:0] ui_in,    // Dedicated inputs
-    output wire [7:0] uo_out,   // Dedicated outputs
-    input  wire [7:0] uio_in,   // IOs: Input path
-    output wire [7:0] uio_out,   // IOs: Output path
-    output wire [7:0] uio_oe,   // IOs: Enable path (active high: 0=input, 1=output)
+    wire in_bus_ready;
+    wire in_bus_valid;
+    wire [7:0] in_bus_data;
+
+    wire out_bus_ready;
+    wire out_bus_valid;
+    wire [7:0] out_bus_data;
+
+    output wire [3:0] mem_qspi_output_enable;
+    output wire [3:0] mem_qspi_out;
+    output wire sclk_mem;
+    output wire n_cs_mem;
+
+    input wire [3:0] mem_qspi_in;
+
     input  wire       ena,      // always 1 when the design is powered, so you can ignore it
     input  wire       clk,      // clock
     input  wire       rst_n     // reset_n - low to reset
 );
 
-// #  To tt output ctrl
-// #  uio_oe[3:0]
-
-  wire READY;
-  wire VALID;
-  wire [7:0] DATA;
-
-  wire READY_IN;
-  wire VALID_IN;
-  wire [7:0] DATA_IN;
-
-  // wire ACK_READY;
-  // wire ACK_VALID;
-  // wire [1:0] MODULE_SOURCE_ID;
-
-  // wire ACK_VALID_IN;
-  // wire SOURCE_ID_IN;
-
-  // wire CS, IO0, IO1, IO2, IO3, SCLK;
- 
   wire spi_start = 0;
   wire spi_done = 0;
   wire [7:0] spi_tx_data = 0;
@@ -115,9 +105,12 @@ module mem_toplevel(
     .out_rx_data(spi_rx_data),
     .out_rx_valid(spi_rx_valid),
 
-    .io_ena(uio_oe[3:0]),
-    .in_io(uio_in[3:0]),
-    .out_io(uio_out[3:0])
+    .io_ena(mem_qspi_output_enable),
+    .in_io(mem_qspi_in),
+
+    .out_io(mem_qspi_out),
+    .out_sclk(sclk_mem),
+    .out_cs_n(n_cs_mem)
   );
 
 endmodule
