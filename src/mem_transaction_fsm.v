@@ -38,6 +38,8 @@ module mem_transaction_fsm(
     output reg out_spi_r_w,     //1=read,0=write (to qspi)
     output reg out_spi_dummy,   //1=qspi hold / send dummy clocks
 
+    output reg out_fsm_done;
+
     //to status
     output reg out_byte_done,      //pulse: 1 real data byte done
     output reg out_status_we,      //status[6]
@@ -154,6 +156,7 @@ module mem_transaction_fsm(
             need_dummy <= 1'b0;
             need_pre_wren <= 1'b0;
 
+            out_fsm_done <= 0;
             status_qe <= 0;
             gp_timer <= 0;
             rst_wait <= 0;
@@ -380,6 +383,7 @@ module mem_transaction_fsm(
                 end
 
                 S_FINISH: begin
+                    out_fsm_done <= 1;
                     //wait status counter done -> will hop to IDLE in comb
                 end
 
