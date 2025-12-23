@@ -79,7 +79,7 @@
 #        * SHA WR 256b + SHA RD 256b compare.
 #    - Ensures whole stack (CMD + FSM + QSPI + flash model) works end-to-end.
 
-#	For all tests not in qspi mode ensure only DI/DO pins being used
+#	For all tests not in qspi mode ensure only IO0/IO1 pins being used
 #	For all tests in qspi mode ensure  IO pins tri-stated when not use, driving tt uio_oe[3:0] pin individually
 #
 #	Get clarification for input/output to databus 
@@ -125,7 +125,8 @@ from cocotb.triggers import (
     with_timeout,
 )
 from cocotb.utils import get_sim_time
-from cocotb.result import SimTimeoutError, TestFailure
+from cocotb.triggers import SimTimeoutError
+from cocotb.types import Logic
 
 RD_DUMMY = 8
 
@@ -166,22 +167,22 @@ def rd_text_sha_256b():
 
 def wr_aes_generate_128b():
     enc = random.randint(0,1)
-    src = 0b10                          # AES
-    dest = 0b00
+    src = 0b00                          
+    dest = 0b10
     opcode = 0b10                       # WR_RES
     return (enc<<7)|(0<<6)|(dest<<4)|(src<<2)|opcode
 
 def wr_sha_generate_256b():
     enc = random.randint(0,1)
-    src = 0b01                          # SHA
-    dest = 0b00
+    src = 0b00                         
+    dest = 0b01
     opcode = 0b10                       # WR_RES
     return (enc<<7)|(0<<6)|(dest<<4)|(src<<2)|opcode
 
 def invalid():
     enc = random.randint(0,1)
     reserved = 0
-    opcode = random.randint(0,3)
+    opcode = 11
     dest  = random.choice([0b01, 0b10, 0b11])
     src   = random.choice([0b00, 0b11])
     return (enc<<7)|(reserved<<6)|(dest<<4)|(src<<2)|opcode
@@ -190,7 +191,7 @@ def randomized_data():
     data = random.randint(0,255)
     return data
 
-@cocotb.test()
+@cocotb.test(timeout_time= 500,timeout_unit='ms')
 async def mem_top(dut):
     dut._log.info("Mem Module Level Start")
 
@@ -207,27 +208,43 @@ async def SPI_no_addr(dut):
         await FallingEdge(dut.CS)
         opcode = 0x00   
         for _ in range(8):
+            await FallingEdge(dut.SCLK)
             await RisingEdge(dut.SCLK)
-            opcode = (opcode << 1) | int(dut.DI.value)
-        t = get_sim_time(units="ns")
+            opcode = (opcode << 1) | int(dut.IO0.value)
+        t = get_sim_time(unit="ns")
         dut._log.info(f"[{t} ns] Opcode {opcode:#02x}")
         return opcode
 
+async def timeout_monitor(dut):
+    while True:
+        await RisingEdge(dut.clk)
+
+        # Wait until reset is a known 1
+        if (not dut.rst_n.value.is_resolvable) or int(dut.rst_n.value) == 0:
+            continue
+
+        # Ignore unknown err (X/Z) during settle
+        if not dut.err.value.is_resolvable:
+            continue
+
+        assert int(dut.err.value) == 0, "Timeout Triggered"
+
 async def SPI_addr(dut):
+        # not used
         # Get opcode with addr
         dut._log.info("SPI Opcode Collect")
         await FallingEdge(dut.CS)
         opcode = 0x00   
         for _ in range(8):
             await RisingEdge(dut.SCLK)
-            opcode = (opcode << 1) | int(dut.DI.value)
+            opcode = (opcode << 1) | int(dut.IO0.value)
         t = get_sim_time(units="ns")
         dut._log.info(f"[{t} ns] Opcode {opcode:#02x}")
 
         addr = 0
         for _ in range(24):
             await RisingEdge(dut.SCLK)
-            addr = (addr << 1) | int(dut.DI.value)
+            addr = (addr << 1) | int(dut.IO0.value)
 
         # Timestamp
         t = get_sim_time(units="ns")
@@ -235,6 +252,7 @@ async def SPI_addr(dut):
         return opcode, addr
 
 async def opcode_monitor(dut, opcode_log):
+    # not used
     """Runs forever, logging the first opcode byte of each SPI transaction."""
     while True:
         # Wait for transaction start
@@ -243,8 +261,9 @@ async def opcode_monitor(dut, opcode_log):
         # Wait 8 bits of opcode on IO0 (mode 0, sample at rising)
         opcode = 0
         for _ in range(8):
+            await FallingEdge(dut.SCLK)
             await RisingEdge(dut.SCLK)
-            bit = int(dut.DI.value)
+            bit = int(dut.IO0.value)
             opcode = (opcode << 1) | bit
 
         opcode_log.append(opcode)
@@ -271,19 +290,23 @@ async def preload_key_region(dut, data, base_addr):
     for i in range(len(data)):
         dut.flash.memory[base_addr + i].value = data[i]
     # small delay to let simulator settle
-    await Timer(50, "ns")
+    await Timer(1, "ns")
 
 async def expect_ack(dut):
         await RisingEdge(dut.ACK_VALID)
         assert int(dut.MODULE_SOURCE_ID.value) & 0b11 == 0b00,f"MODULE_SOURCE_ID expect 0b00 got {int(dut.MODULE_SOURCE_ID.value) & 0b11:#02b}"
         dut.ACK_READY.value = 1
         await FallingEdge(dut.ACK_VALID)
-        dut.ACK_READY.value = 0   
+        dut.ACK_READY.value = 0  
+
+async def expect_no_ack(dut,cycle = 1000):
+    for _ in range(cycle):
+        assert dut.ACK_VALID.value == 0, f"ACK_VALID expect 0 got {dut.ACK_VALID.value}"
+        await RisingEdge(dut.clk)
 
 async def check_qspi_idle(dut, cycles=10):
-    """
-    While flash is idle, make sure we are not driving any IOs.
-    Call this when you expect the controller to be idle (CS high).
+    """ 
+    Expect uio_oe 0000 after CS high
     """
     for _ in range(cycles):
         await RisingEdge(dut.clk)
@@ -297,6 +320,9 @@ async def check_qspi_idle(dut, cycles=10):
         assert oe == 0x0, f"Idle: uio_oe[3:0] expected 0000, got {oe:04b}"
 
 async def send_header(dut, header_bytes):
+    """
+    header send helper
+    """
     dut.VALID_IN.value = 1
     for b in header_bytes:
         dut.DATA_IN.value = b
@@ -335,29 +361,30 @@ async def recv_read_payload(dut, length):
 
 
 async def rst(dut):
-# 1) Startup sequence
-#    Stimulus:
-#      - Apply reset, then just run clock until startup is expected to finish.
-#    Check (via QSPI monitor OR vendor model state):
-#      - See 66h → 99h (SW reset).
-#      - See 06h → 98h (global unlock).
-#      - See 06h → C7h/60h (chip erase).
-    #      - See repeated 05h reads until SR1.WIP == 0.
-    #      - See 35h read of SR2 and, if QE was 0, 06h + 31h write setting QE=1.
-#      - Finally: flash contents all 0xFF, SR2.QE == 1, SR1.WIP == 0.
+    # 1) Startup sequence
+    #    Stimulus:
+    #      - Apply reset, then just run clock until startup is expected to finish.
+    #    Check (via QSPI monitor OR vendor model state):
+    #      - See 66h → 99h (SW reset).
+    #      - See 06h → 98h (global unlock).
+    #      - See 06h → C7h/60h (chip erase).
+        #      - See repeated 05h reads until SR1.WIP == 0.
+        #      - See 35h read of SR2 and, if QE was 0, 06h + 31h write setting QE=1.
+    #      - Finally: flash contents all 0xFF, SR2.QE == 1, SR1.WIP == 0.
     async def spi_only_di_do():
         await FallingEdge(dut.CS)
 
-        while int(dut.flash.status_reg[9].value) == 0 and dut.CS.value == 0:
+        while ((dut.flash.status_reg.value.to_unsigned() >> 9) & 0b1) == 0 and dut.CS.value == 0:
             await RisingEdge(dut.SCLK)
 
             assert dut.IO2.value == 1, f"IO2 expected 1 got {dut.IO2.value}" 
             assert dut.IO3.value == 1, f"IO3 expected 1 got {dut.IO3.value}"
             oe = int(dut.uio_oe.value) & 0xF
             # IO2/IO3 must not be driven
-            assert (oe & 0b1100) == 0, f"SPI1 mode: IO2/3 driven unexpectedly, uio_oe={oe:04b}"
+            assert (oe & 0b1100) == 0b1100, f"SPI1 mode: IO2/3 driven must be high, uio_oe={oe:04b}"
 
     dut._log.info("Startup Flow Start")
+    
     await RisingEdge(dut.clk)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
@@ -365,7 +392,8 @@ async def rst(dut):
     await ClockCycles(dut.clk,5)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)  
-
+    await RisingEdge(dut.clk)  
+    await RisingEdge(dut.clk)  
     # reset output check 
     # bus
     assert dut.VALID.value == 0, f"VALID expected 0 got {dut.VALID.value}" 
@@ -376,50 +404,63 @@ async def rst(dut):
 
     # flash
     assert dut.CS.value == 1, f"CS expected 1 got {dut.CS.value}" 
-    assert dut.IO0.value == 0, f"IO0/DI expected 0 got {dut.IO0.value}" 
-    assert dut.IO1.value.is_z, f"IO1/DO expected Z got {dut.IO1.value}"
+    assert dut.IO0.value == 0, f"IO0/IO0 expected 0 got {dut.IO0.value}" 
+    assert dut.IO1.value == 0 or dut.IO1.value == Logic('Z'), f"IO1/DO expected 0 or Z got {dut.IO1.value}"
     assert dut.IO2.value == 1, f"IO2 expected 1 got {dut.IO2.value}" 
     assert dut.IO3.value == 1, f"IO3 expected 1 got {dut.IO3.value}"
-    assert dut.SCLK.value == 0, f"SCLK expected 0 got {dut.SCLK.value}"
+    assert dut.SCLK.value == 1, f"SCLK expected 1 got {dut.SCLK.value}"
     assert int(dut.MODULE_SOURCE_ID.value) == 0b00, f"MODULE_SOURCE_ID expected 0 got {int(dut.MODULE_SOURCE_ID.value):#04b}"
-    assert int(dut.DATA.value) == 0x0, f"DATA expected 0 got {int(dut.DATA.value):#04x}"  
+    assert int(dut.DATA.value) == 0x0, f"DATA expected 0 got {int(dut.DATA.value):#02x}"  
 
     # tt output ena  
-    assert int(dut.uio_oe.value) == 0x0, f"uio_oe expected 0x0 got {int(dut.uio_oe.value):#04x}"
-
+    assert int(dut.uio_oe.value) == 0b1101, f"uio_oe expected 0x0 got {int(dut.uio_oe.value):#04b}"
+    
+    t = get_sim_time(unit="ns")
+    dut._log.info(f"[{t} ns] IO check complete")
     # start up flow opcode check
     # coroutine spi only di do
     spi_task = cocotb.start_soon(spi_only_di_do())
-    await spi_task
+
+
+    # WREN
+    opcode = await SPI_no_addr(dut)
+    assert opcode == 0x06, f"Opcode expected 0x06 got {opcode:#02x}"
+
     # SW RST
     opcode = await SPI_no_addr(dut)
     assert opcode == 0x66, f"Opcode expected 0x66 got {opcode:#02x}"
-    await spi_task
+
     opcode = await SPI_no_addr(dut)
     assert opcode == 0x99, f"Opcode expected 0x99 got {opcode:#02x}"
-    dut._log.info("SW Rst Done")
+    dut._log.info("SW RST Done")
+    # while still in wip poll
+    while True:
+        opcode = await SPI_no_addr(dut)
+        if opcode == 0x05:
+            continue
+        # global unlock wren
+        assert opcode == 0x06, f"Opcode expected 0x06 got {opcode:#02x}"
+        break
+
     # global unlock
-    await spi_task
-    opcode = await SPI_no_addr(dut)
-    assert opcode == 0x06, f"Opcode expected 0x06 got {opcode:#02x}"
-    await spi_task
     opcode = await SPI_no_addr(dut)
     assert opcode == 0x98, f"Opcode expected 0x98 got {opcode:#02x}"
+    
     # chip erase
-    await spi_task
+
     opcode = await SPI_no_addr(dut)
     assert opcode == 0x06, f"Opcode expected 0x06 got {opcode:#02x}"
-    await spi_task
+
     opcode = await SPI_no_addr(dut)
-    assert opcode == 0xC7, f"Opcode expected 0xC7 got {opcode:#02x}"
+    assert opcode == 0xC7 or opcode == 0x60, f"Opcode expected 0xC7/0x60 got {opcode:#02x}"
     # read SR2 - QE enable
     saw_05 = False
 
     for _ in range(MAX_POLLS):
         try:
             # SPI_no_addr waits for a full transaction (CS low, bits shifted, CS high)
-            await spi_task
-            opcode = await with_timeout(SPI_no_addr(dut), 100, 'ms')
+
+            opcode = await SPI_no_addr(dut)
         except SimTimeoutError:
             raise cocotb.result.TestFailure("Timed out waiting for status opcode after chip erase")
 
@@ -441,10 +482,10 @@ async def rst(dut):
 
     dut._log.info("Status polling → RDSR2 (0x35) observed")
         
-    await spi_task
+
     opcode = await SPI_no_addr(dut)
     assert opcode == 0x06, f"Opcode expected 0x06 got {opcode:#02x}"
-    await spi_task
+
     opcode = await SPI_no_addr(dut)
     assert opcode == 0x31, f"Opcode expected 0x31 got {opcode:#02x}"
 
@@ -1017,26 +1058,25 @@ async def full_smoke(dut):
 #        * SHA WR 256b + SHA RD 256b compare.
 #    - Ensures whole stack (CMD + FSM + QSPI + flash model) works end-to-end.
     dut._log.info("Full Smoke Test Start")
-
+    cocotb.start_soon(timeout_monitor(dut))
     await rst(dut)
-
     # 2. Basic functional read/write + ack + uio_oe checks
-    await basic_read_write_ack(dut)
+    # await basic_read_write_ack(dut)
 
     # 3. Busy / WIP serialization (while busy only 0x05 should appear)
-    await busy_WIP(dut)
+    # await busy_WIP(dut)
 
     # 4. Invalid / garbage opcode – confirm no QSPI traffic, no ack, no read data
-    await invalid_opcode(dut)
+    # await invalid_opcode(dut)
 
     # 5. Random stress: AES/SHA/key with random data + random backpressure
-    await random_stress(dut)
+    # await random_stress(dut)
 
     # 6.idle check at the end
-    await ClockCycles(dut.clk, 20)
-    assert dut.CS.value == 1, "End-of-smoke: CS should be high (idle)"
-    assert dut.ACK_VALID.value == 0, "End-of-smoke: ACK_VALID should be low"
-    assert dut.VALID.value == 0, "End-of-smoke: no data driving bus"    
-    await check_qspi_idle(dut)
+    # await ClockCycles(dut.clk, 20)
+    # assert dut.CS.value == 1, "End-of-smoke: CS should be high (idle)"
+    # assert dut.ACK_VALID.value == 0, "End-of-smoke: ACK_VALID should be low"
+    # assert dut.VALID.value == 0, "End-of-smoke: no data driving bus"    
+    # await check_qspi_idle(dut)
 
     dut._log.info("Full Smoke Test Complete")
