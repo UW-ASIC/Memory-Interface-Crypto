@@ -33,12 +33,11 @@ module mem_vendor_test (
         $dumpvars(0, mem_vendor_test);
     end
     wire [3:0] dut_io_out;
-    wire [3:0] dut_io_oe;   // assume 1=drive, 0=Z (invert below if opposite)
+    wire [3:0] dut_io_oe;
     wire [3:0] dut_io_in;
 
     assign uio_oe = dut_io_oe;
 
-    // Build the bidirectional “physical wires” seen by the flash model
     // Bit order: [0]=IO0, [1]=IO1, [2]=IO2, [3]=IO3
     assign IO0 = dut_io_oe[0] ? dut_io_out[0] : 1'bz;
     assign IO1 = dut_io_oe[1] ? dut_io_out[1] : 1'bz;
@@ -66,42 +65,34 @@ module mem_vendor_test (
         .clk   (clk),
         .rst_n (rst_n),
 
-        // Bus OUT (from bus into DUT)
         .READY (READY),
 
-        // Bus IN (from DUT back to bus)
         .VALID (VALID),
         .DATA  (DATA),
 
-        // Bus IN (from bus into DUT)
         .VALID_IN (VALID_IN),
         .DATA_IN  (DATA_IN),
 
-        // Bus OUT (from DUT back to bus)
         .READY_IN (READY_IN),
 
-        // Ack channel
         .ACK_READY        (ACK_READY),
         .ACK_VALID        (ACK_VALID),
         .MODULE_SOURCE_ID (MODULE_SOURCE_ID),
 
-        // Flash pins (DUT drives these)
         .CS   (CS),
         .SCLK (SCLK),
 
-        // Flash data pins: DUT samples these
+    
         .IN0 (dut_io_in[0]),
         .IN1 (dut_io_in[1]),
         .IN2 (dut_io_in[2]),
         .IN3 (dut_io_in[3]),
 
-        // Flash data pins: DUT drives these
         .OUT0 (dut_io_out[0]),
         .OUT1 (dut_io_out[1]),
         .OUT2 (dut_io_out[2]),
         .OUT3 (dut_io_out[3]),
 
-        // Output enable (DUT controls tri-state)
         .uio_oe (dut_io_oe),
 
         // test-only
