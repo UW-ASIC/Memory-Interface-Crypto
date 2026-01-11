@@ -41,8 +41,9 @@ module mem_spi_controller (
     output reg [3:0] io_ena
 );
 
-    localparam DIVIDER = 2; //divider == 1 means half frequency, divider == 2 means quarter frequency 
-    
+    localparam DIVIDER = 3; //divider == 1 means half frequency, divider == 2 means quarter frequency 
+    localparam T_SETUP_HOLD_CYC = 1; // setup/hold time cycle constant
+
     reg [3:0] bit_count = 4'b0;
     reg [1:0] sclk_cnt;
 
@@ -53,8 +54,12 @@ module mem_spi_controller (
     wire [3:0] num_cycles;
     assign num_cycles = internal_quad ? 4'b0010 : 4'b1000; //2 cycles if quad enable, 8 cycles if quad enable
 
+    reg [1:0] t_cnt  = 2'b0; // setup/hold time count
+
+    reg t_met;
+
     reg internal_rw; // latched r_w for this byte
-    reg internal_quad; // latched quad_enable for this byte
+    wire internal_quad = quad_enable && qed; // latched quad_enable for this byte
     reg [7:0] tx_shift; // byte to shift out in write mode
     reg have_tx_byte; // tx_shift is loaded
     reg [7:0] rx_shift; // rx shift reg
@@ -64,35 +69,23 @@ module mem_spi_controller (
 
     assign out_tx_ready = ~have_tx_byte; // comb drive tx ready
     // cs driving, cs should be low when in_start is high
+    // read/write latch
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             active   <= 1'b0;
             out_cs_n <= 1'b1;
+            internal_rw   <= 1'b0; 
         end else begin
             // start transaction
-            if (in_start)
-            active <= 1'b1;
-
+            if (in_start) begin
+                active <= 1'b1;
+                internal_rw <= r_w;
+            end 
             // end transaction fsm dropped in_start sclk high
             if (!in_start && (out_sclk == 1'b1))
                 active <= 1'b0;
 
             out_cs_n <= ~active;
-        end
-    end
-    // read/write latch
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            internal_rw   <= 1'b0;
-            internal_quad <= 1'b0;       
-        end else if (!active && in_start)begin
-            // latch by the start of a byte
-            internal_rw <= r_w;
-            internal_quad <= quad_enable && qed; // only qspi if qed and quad mode
-        end else if (out_done && in_start) begin
-            // latch  
-            internal_rw <= r_w;
-            internal_quad <= quad_enable && qed; // only qspi if qed and quad mode        
         end
     end
     // tx handshake
@@ -106,7 +99,7 @@ module mem_spi_controller (
                 tx_shift <= in_tx_data;
                 have_tx_byte <= 1'b1;
             end
-            if (out_done && internal_rw == 1'b0)
+            if (out_done)
                 have_tx_byte <= 1'b0;
 
         end    
@@ -149,7 +142,7 @@ module mem_spi_controller (
                     out_sclk <= ~out_sclk;
 
                     // shift out on fall edge
-                    if(sclk_fall && !internal_rw && have_tx_byte) begin
+                    if(sclk_fall && !internal_rw && have_tx_byte && t_met) begin
                         // quad/single
                         if (internal_quad) begin
                             out_io <= tx_shift[7:4];
@@ -161,7 +154,7 @@ module mem_spi_controller (
                     end
 
                     // sample on rise edge
-                    if(sclk_rise && internal_rw && !rx_full ) begin
+                    if(sclk_rise && internal_rw && !rx_full && t_met) begin
                         // quad/single
                         if (internal_quad) begin
                             rx_shift <= {rx_shift[3:0],in_io}; // msb to lsb
@@ -219,6 +212,29 @@ module mem_spi_controller (
             end
         end
     end
-
+    
+    // timing requirement for setup/hold 10ns
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            t_met <= 1'b0;
+            t_cnt <= 2'b0; 
+        end else begin
+            if (active) begin
+                if (sclk_toggle) begin
+                    t_cnt <= 2'b0;
+                    t_met <= 1'b0;
+                end else begin
+                    if (t_cnt == (T_SETUP_HOLD_CYC-1)) begin
+                        t_met <= 1'b1;
+                    end else begin
+                        t_cnt <= t_cnt + 1;
+                    end
+                end
+            end else begin
+                t_cnt <= 2'b0;
+                t_met <= 1'b0;
+            end
+        end
+    end
 
 endmodule

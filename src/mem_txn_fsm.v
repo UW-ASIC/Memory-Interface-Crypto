@@ -59,17 +59,22 @@ module mem_txn_fsm(
     localparam [7:0] FLASH_RDSR = 8'h05; //read sr1
     localparam [7:0] OPC_CHIP_ERASE = 8'h60; //chip erase
 
-    // start up sequence
-    localparam start = 5'd0, rst_ena = 5'd2, rst = 5'd3,
-    global_unlock = 5'd4, chip_erase = 5'd5, rd_sr2_send = 5'd6,
-    rd_sr2_rd = 5'd7, wr_sr2_opcode = 5'd8, wr_sr2_data = 5'd9;
+    // startup sequence
+    localparam start = 5'd0, rst_ena = 5'd1, rst = 5'd2,
+    global_unlock = 5'd3, chip_erase = 5'd4,
+    rd_sr2_send = 5'd5, rd_sr2_send_wait_done = 5'd6, rd_sr2_rd_wait_done = 5'd28, rd_sr2_rd = 5'd7,
+    wr_sr2_opcode = 5'd8, wr_sr2_opcode_wait_done = 5'd30, wr_sr2_data = 5'd9, wr_sr2_data_wait_done = 5'd29;
+
     // normal workflow
-    localparam idle = 5'd10, dummy = 5'd15, receive_data = 5'd16, send_data = 5'd17, wait_done = 5'd18;
+    localparam idle = 5'd10, dummy = 5'd11, receive_data = 5'd12,
+    send_data = 5'd13, wait_done = 5'd14;
 
     // shared subroutines / error
-    localparam wren = 5'd25,send_opcode = 5'd11, send_a1 = 5'd12, send_a2 = 5'd13, send_a3 = 5'd14, 
-    gap = 5'd19, wip_poll_send = 5'd20, wip_poll_rd = 5'd21, 
-    wip_poll_wait = 5'd22, spi_wait = 5'd23,err  = 5'd24;
+    localparam send_opcode = 5'd15, send_a1 = 5'd16, send_a2 = 5'd17, send_a3 = 5'd18,
+    gap = 5'd19, spi_wait = 5'd20, wren = 5'd21,
+    wip_poll_send = 5'd22, wip_poll_rd = 5'd23, wip_poll_wait = 5'd24,
+    wip_poll_send_wait_done = 5'd25, wip_poll_rd_wait_done = 5'd26, err = 5'd27;
+
 
     //waiting time constant 
     // gap
@@ -89,10 +94,10 @@ module mem_txn_fsm(
     localparam [7:0] cpe_max = 8'd150;    
 
     `ifdef SIMULATION
-        localparam [26:0] power_on      = 27'd2000;      // 2,000 cycles  (20 µs)
+        localparam [26:0] power_on      = 27'd200;      // 2,000 cycles  (20 µs)
         localparam [26:0] page_program  = 27'd400;       // etc.
-        localparam [26:0] write_sr      = 27'd10000;
-        localparam [26:0] chip_erase_t  = 27'd20000;
+        localparam [26:0] write_sr      = 27'd1000;
+        localparam [26:0] chip_erase_t  = 27'd2000;
         initial $display("SIMULATION is ON in %m");
     `else
         localparam [26:0] power_on      = 27'd2000000;   // real values
@@ -266,13 +271,28 @@ module mem_txn_fsm(
                 in_start = 1;
                 r_w = 0;
                 quad_enable = 0;
-                next_state = (in_spi_ready) ? wip_poll_rd : wip_poll_send;
+                next_state = (in_spi_ready) ? wip_poll_send_wait_done : wip_poll_send;
                 n_out_spi_data = FLASH_RDSR;
                 n_out_spi_valid = 1;
             end 
+            // wait until opcode send proceed when receive done
+            wip_poll_send_wait_done: begin
+                in_start = 1;
+                r_w = 0;
+                quad_enable = 0;
+                next_state = (in_spi_done) ? wip_poll_rd_wait_done : wip_poll_send_wait_done;                
+            end
+            // wait until opcode send proceed when receive done
+            wip_poll_rd_wait_done: begin
+                in_start = 1;
+                r_w = 1;
+                quad_enable = 0;
+                n_out_spi_valid = 0;
+                next_state = (in_spi_done) ? wip_poll_rd : wip_poll_rd_wait_done;                
+            end
             // read wip 
             wip_poll_rd: begin  
-                in_start = 1;
+                in_start = 0; // this will be 0 as reading is all finished
                 r_w = 1;
                 quad_enable = 0;
                 n_out_spi_valid = 0;
@@ -487,16 +507,34 @@ module mem_txn_fsm(
                 quad_enable = 1'b0;
                 n_out_spi_data = FLASH_RDSR2;
                 n_out_spi_valid = 1;
-                next_state = in_spi_ready ? rd_sr2_rd : rd_sr2_send; // after cmd send go to waiting for status reg input             
+                next_state = in_spi_ready ? rd_sr2_send_wait_done : rd_sr2_send; // after cmd send go to waiting for status reg input             
+            end
+            // wait until opcode send proceed when receive done
+            rd_sr2_send_wait_done: begin
+                in_start    = 1'b1; // CS low
+                r_w         = 1'b0;
+                quad_enable = 1'b0;      
+                next_state = in_spi_done ? rd_sr2_rd_wait_done : rd_sr2_send_wait_done;          
+            end
+            // wait until status reg receive, proceed when receive done
+            rd_sr2_rd_wait_done: begin
+                in_start    = 1'b1; // CS low
+                r_w         = 1'b1;
+                quad_enable = 1'b0;  
+                n_out_spi_valid = 0;    
+                next_state = in_spi_done ? rd_sr2_rd : rd_sr2_rd_wait_done;          
             end
             //process status reg 2 
             rd_sr2_rd: begin
-                in_start    = 1'b1; // CS low
+                in_start    = 1'b0; // CS high
                 r_w         = 1'b1; // read
                 quad_enable = 1'b0;
+                n_out_spi_valid = 0;
                 if (in_spi_valid) begin
                     n_data = {in_spi_data[7:2],1'b1,in_spi_data[0]}; // change qe bit of sr2 data[7:0]
-                    next_state = spi_wait;
+                    next_state = gap;
+                    n_counter = opcode_gap;
+                    n_timeout_counts = 0;
                     n_gap_return_state = wren;
                     n_wren_return_state = wr_sr2_opcode; // now go to write status reg 2
                 end                
@@ -508,22 +546,39 @@ module mem_txn_fsm(
                 quad_enable = 1'b0;
                 n_out_spi_data = OPC_QE; 
                 n_out_spi_valid = 1;
-                next_state = in_spi_ready? wr_sr2_data: wr_sr2_opcode; // send modified wrsr2 after opcode sent
+                next_state = in_spi_ready? wr_sr2_opcode_wait_done: wr_sr2_opcode; // send modified wrsr2 after opcode sent
             end  
-            // write status reg2 data
+            wr_sr2_opcode_wait_done: begin
+                in_start    = 1'b1; // CS low
+                r_w         = 1'b0;
+                quad_enable = 1'b0;
+                n_out_spi_valid = 0;
+                next_state = in_spi_done? wr_sr2_data: wr_sr2_opcode_wait_done; // send modified wrsr2 after opcode sent
+            end  
+            // write status reg2 data handshake
             wr_sr2_data: begin
                 in_start    = 1'b1; // CS low
                 r_w         = 1'b0;
                 quad_enable = 1'b0;
                 n_out_spi_data = data; // qe bit 1 sr2
                 n_out_spi_valid = 1;   
-                next_state = in_spi_ready? spi_wait: wr_sr2_data;
+                next_state = in_spi_ready? wr_sr2_data_wait_done: wr_sr2_data;
+            end
+            // write status wait done & update qed (uio_oe), after done poll wip then idle
+            wr_sr2_data_wait_done : begin
+                in_start    = 1'b1; // CS low
+                r_w         = 1'b0;
+                quad_enable = 1'b0; 
+                n_out_spi_valid = 0;   
+                next_state = in_spi_done? gap: wr_sr2_data_wait_done;
+                n_counter = opcode_gap;
+                n_timeout_counts = 0;
                 n_gap_return_state = wip_poll_send; // go poll
                 n_wip_poll_type = wrsr; // write status reg timing
                 n_wip_return_state = idle; // after everything finished, go to normal flow idle
-                n_qed = in_spi_ready? 1: 0;
+                n_qed = in_spi_done? 1: qed;                
             end
-
+    
             // normal flow
             // idle state: decode opcode from cu into operation and size of transaction
             idle: begin
@@ -632,4 +687,255 @@ module mem_txn_fsm(
             default: ;
         endcase
     end
+
+    // to make my life easier
+    // by gpt
+    reg [255:0] state_name, next_state_name, gap_rts_name, wip_rts_name, wren_rts_name, opa_rts_name;
+
+    always @(*) begin
+        case (state)
+            // start up sequence
+            start           : state_name = "start";
+            rst_ena         : state_name = "rst_ena";
+            rst             : state_name = "rst";
+            global_unlock   : state_name = "global_unlock";
+            chip_erase      : state_name = "chip_erase";
+            rd_sr2_send     : state_name = "rd_sr2_send";
+            rd_sr2_send_wait_done : state_name = "rd_sr2_send_wait_done";
+            rd_sr2_rd_wait_done : state_name = "rd_sr2_rd_wait_done";
+            rd_sr2_rd       : state_name = "rd_sr2_rd";
+            wr_sr2_opcode   : state_name = "wr_sr2_opcode";
+            wr_sr2_opcode_wait_done : state_name = "wr_sr2_opcode_wait_done";
+            wr_sr2_data     : state_name = "wr_sr2_data";
+            wr_sr2_data_wait_done: state_name = "wr_sr2_data_wait_done";
+            // normal workflow
+            idle            : state_name = "idle";
+            dummy           : state_name = "dummy";
+            receive_data    : state_name = "receive_data";
+            send_data       : state_name = "send_data";
+            wait_done       : state_name = "wait_done";
+
+            // shared subroutines / error
+            send_opcode     : state_name = "send_opcode";
+            send_a1         : state_name = "send_a1";
+            send_a2         : state_name = "send_a2";
+            send_a3         : state_name = "send_a3";
+            gap             : state_name = "gap";
+            spi_wait        : state_name = "spi_wait";
+            wren            : state_name = "wren";
+            wip_poll_send   : state_name = "wip_poll_send";
+            wip_poll_rd     : state_name = "wip_poll_rd";
+            wip_poll_wait   : state_name = "wip_poll_wait";
+            wip_poll_send_wait_done : state_name = "wip_poll_send_wait_done";
+            wip_poll_rd_wait_done : state_name = "wip_poll_rd_wait_done";
+            err             : state_name = "err";
+
+            default         : state_name = "UNKNOWN";
+        endcase
+
+
+        case (next_state)
+            // start up sequence
+            start           : next_state_name = "start";
+            rst_ena         : next_state_name = "rst_ena";
+            rst             : next_state_name = "rst";
+            global_unlock   : next_state_name = "global_unlock";
+            chip_erase      : next_state_name = "chip_erase";
+            rd_sr2_send     : next_state_name = "rd_sr2_send";
+            rd_sr2_send_wait_done : next_state_name = "rd_sr2_send_wait_done";
+            rd_sr2_rd_wait_done : next_state_name = "rd_sr2_rd_wait_done";
+            rd_sr2_rd       : next_state_name = "rd_sr2_rd";
+            wr_sr2_opcode   : next_state_name = "wr_sr2_opcode";
+            wr_sr2_opcode_wait_done : next_state_name = "wr_sr2_opcode_wait_done";
+            wr_sr2_data     : next_state_name = "wr_sr2_data";
+            wr_sr2_data_wait_done: next_state_name = "wr_sr2_data_wait_done";
+            // normal workflow
+            idle            : next_state_name = "idle";
+            dummy           : next_state_name = "dummy";
+            receive_data    : next_state_name = "receive_data";
+            send_data       : next_state_name = "send_data";
+            wait_done       : next_state_name = "wait_done";
+
+            // shared subroutines / error
+            send_opcode     : next_state_name = "send_opcode";
+            send_a1         : next_state_name = "send_a1";
+            send_a2         : next_state_name = "send_a2";
+            send_a3         : next_state_name = "send_a3";
+            gap             : next_state_name = "gap";
+            spi_wait        : next_state_name = "spi_wait";
+            wren            : next_state_name = "wren";
+            wip_poll_send   : next_state_name = "wip_poll_send";
+            wip_poll_rd     : next_state_name = "wip_poll_rd";
+            wip_poll_wait   : next_state_name = "wip_poll_wait";
+            wip_poll_send_wait_done : next_state_name = "wip_poll_send_wait_done";
+            wip_poll_rd_wait_done : next_state_name = "wip_poll_rd_wait_done";
+            err             : next_state_name = "err";
+
+            default         : next_state_name = "UNKNOWN";
+        endcase
+    // gap return-state name
+    case (gap_return_state)
+        // start up sequence
+        start                   : gap_rts_name = "start";
+        rst_ena                 : gap_rts_name = "rst_ena";
+        rst                     : gap_rts_name = "rst";
+        global_unlock           : gap_rts_name = "global_unlock";
+        chip_erase              : gap_rts_name = "chip_erase";
+        rd_sr2_send             : gap_rts_name = "rd_sr2_send";
+        rd_sr2_send_wait_done   : gap_rts_name = "rd_sr2_send_wait_done";
+        rd_sr2_rd_wait_done     : gap_rts_name = "rd_sr2_rd_wait_done";
+        rd_sr2_rd               : gap_rts_name = "rd_sr2_rd";
+        wr_sr2_opcode           : gap_rts_name = "wr_sr2_opcode";
+        wr_sr2_data             : gap_rts_name = "wr_sr2_data";
+        wr_sr2_data_wait_done        : gap_rts_name = "wr_sr2_data_wait_done";
+        // normal workflow
+        idle                    : gap_rts_name = "idle";
+        dummy                   : gap_rts_name = "dummy";
+        receive_data            : gap_rts_name = "receive_data";
+        send_data               : gap_rts_name = "send_data";
+        wait_done               : gap_rts_name = "wait_done";
+
+        // shared subroutines / error
+        send_opcode             : gap_rts_name = "send_opcode";
+        send_a1                 : gap_rts_name = "send_a1";
+        send_a2                 : gap_rts_name = "send_a2";
+        send_a3                 : gap_rts_name = "send_a3";
+        gap                     : gap_rts_name = "gap";
+        spi_wait                : gap_rts_name = "spi_wait";
+        wren                    : gap_rts_name = "wren";
+        wip_poll_send           : gap_rts_name = "wip_poll_send";
+        wip_poll_rd             : gap_rts_name = "wip_poll_rd";
+        wip_poll_wait           : gap_rts_name = "wip_poll_wait";
+        wip_poll_send_wait_done : gap_rts_name = "wip_poll_send_wait_done";
+        wip_poll_rd_wait_done   : gap_rts_name = "wip_poll_rd_wait_done";
+        err                     : gap_rts_name = "err";
+
+        default                 : gap_rts_name = "UNKNOWN";
+    endcase
+
+
+    // wip return-state name
+    case (wip_return_state)
+        // start up sequence
+        start                   : wip_rts_name = "start";
+        rst_ena                 : wip_rts_name = "rst_ena";
+        rst                     : wip_rts_name = "rst";
+        global_unlock           : wip_rts_name = "global_unlock";
+        chip_erase              : wip_rts_name = "chip_erase";
+        rd_sr2_send             : wip_rts_name = "rd_sr2_send";
+        rd_sr2_send_wait_done   : wip_rts_name = "rd_sr2_send_wait_done";
+        rd_sr2_rd_wait_done     : wip_rts_name = "rd_sr2_rd_wait_done";
+        rd_sr2_rd               : wip_rts_name = "rd_sr2_rd";
+        wr_sr2_opcode           : wip_rts_name = "wr_sr2_opcode";
+        wr_sr2_data             : wip_rts_name = "wr_sr2_data";
+        wr_sr2_data_wait_done        : wip_rts_name = "wr_sr2_data_wait_done";
+        // normal workflow
+        idle                    : wip_rts_name = "idle";
+        dummy                   : wip_rts_name = "dummy";
+        receive_data            : wip_rts_name = "receive_data";
+        send_data               : wip_rts_name = "send_data";
+        wait_done               : wip_rts_name = "wait_done";
+
+        // shared subroutines / error
+        send_opcode             : wip_rts_name = "send_opcode";
+        send_a1                 : wip_rts_name = "send_a1";
+        send_a2                 : wip_rts_name = "send_a2";
+        send_a3                 : wip_rts_name = "send_a3";
+        gap                     : wip_rts_name = "gap";
+        spi_wait                : wip_rts_name = "spi_wait";
+        wren                    : wip_rts_name = "wren";
+        wip_poll_send           : wip_rts_name = "wip_poll_send";
+        wip_poll_rd             : wip_rts_name = "wip_poll_rd";
+        wip_poll_wait           : wip_rts_name = "wip_poll_wait";
+        wip_poll_send_wait_done : wip_rts_name = "wip_poll_send_wait_done";
+        wip_poll_rd_wait_done   : wip_rts_name = "wip_poll_rd_wait_done";
+        err                     : wip_rts_name = "err";
+
+        default                 : wip_rts_name = "UNKNOWN";
+    endcase
+
+
+    // wren return-state name
+    case (wren_return_state)
+        // start up sequence
+        start                   : wren_rts_name = "start";
+        rst_ena                 : wren_rts_name = "rst_ena";
+        rst                     : wren_rts_name = "rst";
+        global_unlock           : wren_rts_name = "global_unlock";
+        chip_erase              : wren_rts_name = "chip_erase";
+        rd_sr2_send             : wren_rts_name = "rd_sr2_send";
+        rd_sr2_send_wait_done   : wren_rts_name = "rd_sr2_send_wait_done";
+        rd_sr2_rd_wait_done     : wren_rts_name = "rd_sr2_rd_wait_done";
+        rd_sr2_rd               : wren_rts_name = "rd_sr2_rd";
+        wr_sr2_opcode           : wren_rts_name = "wr_sr2_opcode";
+        wr_sr2_data             : wren_rts_name = "wr_sr2_data";
+        wr_sr2_data_wait_done        : wren_rts_name = "wr_sr2_data_wait_done";
+        // normal workflow
+        idle                    : wren_rts_name = "idle";
+        dummy                   : wren_rts_name = "dummy";
+        receive_data            : wren_rts_name = "receive_data";
+        send_data               : wren_rts_name = "send_data";
+        wait_done               : wren_rts_name = "wait_done";
+
+        // shared subroutines / error
+        send_opcode             : wren_rts_name = "send_opcode";
+        send_a1                 : wren_rts_name = "send_a1";
+        send_a2                 : wren_rts_name = "send_a2";
+        send_a3                 : wren_rts_name = "send_a3";
+        gap                     : wren_rts_name = "gap";
+        spi_wait                : wren_rts_name = "spi_wait";
+        wren                    : wren_rts_name = "wren";
+        wip_poll_send           : wren_rts_name = "wip_poll_send";
+        wip_poll_rd             : wren_rts_name = "wip_poll_rd";
+        wip_poll_wait           : wren_rts_name = "wip_poll_wait";
+        wip_poll_send_wait_done : wren_rts_name = "wip_poll_send_wait_done";
+        wip_poll_rd_wait_done   : wren_rts_name = "wip_poll_rd_wait_done";
+        err                     : wren_rts_name = "err";
+
+        default                 : wren_rts_name = "UNKNOWN";
+    endcase
+
+
+    // opcode return-state name
+    case (opaddr_return_state)
+        // start up sequence
+        start                   : opa_rts_name = "start";
+        rst_ena                 : opa_rts_name = "rst_ena";
+        rst                     : opa_rts_name = "rst";
+        global_unlock           : opa_rts_name = "global_unlock";
+        chip_erase              : opa_rts_name = "chip_erase";
+        rd_sr2_send             : opa_rts_name = "rd_sr2_send";
+        rd_sr2_send_wait_done   : opa_rts_name = "rd_sr2_send_wait_done";
+        rd_sr2_rd_wait_done     : opa_rts_name = "rd_sr2_rd_wait_done";
+        rd_sr2_rd               : opa_rts_name = "rd_sr2_rd";
+        wr_sr2_opcode           : opa_rts_name = "wr_sr2_opcode";
+        wr_sr2_data             : opa_rts_name = "wr_sr2_data";
+        wr_sr2_data_wait_done        : opa_rts_name = "wr_sr2_data_wait_done";
+        // normal workflow
+        idle                    : opa_rts_name = "idle";
+        dummy                   : opa_rts_name = "dummy";
+        receive_data            : opa_rts_name = "receive_data";
+        send_data               : opa_rts_name = "send_data";
+        wait_done               : opa_rts_name = "wait_done";
+
+        // shared subroutines / error
+        send_opcode             : opa_rts_name = "send_opcode";
+        send_a1                 : opa_rts_name = "send_a1";
+        send_a2                 : opa_rts_name = "send_a2";
+        send_a3                 : opa_rts_name = "send_a3";
+        gap                     : opa_rts_name = "gap";
+        spi_wait                : opa_rts_name = "spi_wait";
+        wren                    : opa_rts_name = "wren";
+        wip_poll_send           : opa_rts_name = "wip_poll_send";
+        wip_poll_rd             : opa_rts_name = "wip_poll_rd";
+        wip_poll_wait           : opa_rts_name = "wip_poll_wait";
+        wip_poll_send_wait_done : opa_rts_name = "wip_poll_send_wait_done";
+        wip_poll_rd_wait_done   : opa_rts_name = "wip_poll_rd_wait_done";
+        err                     : opa_rts_name = "err";
+
+        default                 : opa_rts_name = "UNKNOWN";
+    endcase
+        
+    end
+
 endmodule
