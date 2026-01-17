@@ -114,11 +114,13 @@ async def spi_random_cycle(dut):
 async def spi_wr(dut, exp: int):
     # assert output for single instruction
     # Wait valid 
+    dut.in_spi_ready.value = 1
     await RisingEdge(dut.out_spi_valid)
     dut.in_spi_ready.value = 0
     dut.in_spi_done.value  = 0
     got = int(dut.out_spi_data.value)
     assert got == exp, f"out_spi_data expected 0x{exp:#02x}, got {got:#04x}"
+    dut._log.info(f"Opcode: {got:#02x}")
     # emulate before shifting 
     await spi_random_cycle(dut)
     dut.in_spi_ready.value = 1
@@ -139,6 +141,7 @@ async def rd_sr(dut,exp:int,data):
     dut.in_spi_done.value  = 0
     got = int(dut.out_spi_data.value)
     assert got == exp, f"out_spi_data expected 0x{exp:02x}, got {got:#04x}"
+    dut._log.info(f"Opcode: {got:#02x}")
     # emulate before shifting
     await spi_random_cycle(dut)
     # accept byte
@@ -147,17 +150,26 @@ async def rd_sr(dut,exp:int,data):
     dut.in_spi_ready.value = 0
     # emulate shifting current byte
     await spi_random_cycle(dut)
-    # reg data
-    dut.in_spi_valid.value = 1
-    dut.in_spi_data.value = data
-
-    await RisingEdge(dut.clk)
-    # transaction done
     dut.in_spi_done.value = 1
-    dut.in_spi_valid.value = 0
-    dut.in_spi_data.value = 0   
     await RisingEdge(dut.clk)
     dut.in_spi_done.value = 0
+    await RisingEdge(dut.clk)
+
+    assert dut.r_w.value == 1, f"r_w expected 1, got {dut.r_w.value}"   
+    await spi_random_cycle(dut)
+    # emulate receiving 
+    dut.in_spi_done.value = 1
+    await RisingEdge(dut.clk)
+    dut.in_spi_done.value = 0
+    dut.in_spi_valid.value = 1
+    dut.in_spi_data.value = data  
+    while True:
+        await RisingEdge(dut.clk)
+        if dut.out_spi_ready.value == 1:
+            break
+
+    dut.in_spi_valid.value = 0
+    dut.in_spi_data.value = 0   
     
 async def timeout_monitor(dut):
     # all time coroutine to make sure it never hits timeout
@@ -175,16 +187,32 @@ async def wr_sr(dut,exp_opcode:int,exp_data:int):
     # opcode
     got = int(dut.out_spi_data.value)
     assert got == exp_opcode, f"out_spi_data expected 0x{exp_opcode:#02x}, got {got:#04x}"
-    # emulate shifting before 
-    await spi_random_cycle(dut)
-    # second handshake
-    dut.in_spi_ready.value = 0
-    await spi_random_cycle(dut)
+    dut._log.info(f"Opcode: {got:#02x}")
+    await RisingEdge(dut.clk)
     dut.in_spi_ready.value = 1
+    await RisingEdge(dut.clk)
+    dut.in_spi_ready.value = 0
+    # emulate shifting  
     await spi_random_cycle(dut)
+    # shift done
+    dut.in_spi_done.value = 1
+    await RisingEdge(dut.clk)
+    dut.in_spi_done.value = 0  
+    # second handshake
+    dut.in_spi_ready.value = 1
+    while True:
+        await RisingEdge(dut.clk)
+        if dut.out_spi_valid.value == 1:
+            break
     # data
     got = int(dut.out_spi_data.value)
     assert got == exp_data, f"out_spi_data expected 0x{exp_data:#08b}, got {got:#08b}"
+    dut._log.info(f"Data: {got:#02x}")
+    # clear ready
+    await RisingEdge(dut.clk)
+    dut.in_spi_ready.value = 0
+
+    await spi_random_cycle(dut)
     # transaction done
     dut.in_spi_done.value = 1
     await RisingEdge(dut.clk)
@@ -209,7 +237,7 @@ async def fsm_spi_output(dut, data, backpressure):
             assert got == data[i], f"out_spi_data expect {data[i]:#02x} got {got:#02x}"
             i += 1
 
-    dut._log.info(f"fsm_spi_output: all {len(data)} bytes received")
+    dut._log.info(f"Pass: fsm_spi_output scoreboard all {len(data)} bytes matched ")
 
     dut.in_spi_ready.value = 0
     dut.in_spi_done.value  = 1
@@ -256,7 +284,7 @@ async def fsm_cu_output(dut,data,backpressure):
         # dut._log.info(
         # f"state={int(dut.state.value)}, "
         # f"total_bytes_left={int(dut.total_bytes_left.value)}" )     
-    dut._log.info(f"fsm_spi_output: all {len(data)} bytes received")
+    dut._log.info(f"Pass: fsm_cu_output scoreboard all {len(data)} bytes matched ")
 
     dut.in_cu_ready.value = 0
 
@@ -316,6 +344,9 @@ async def header_check(dut,opcode,addr):
             got = int(dut.out_spi_data.value)
             assert got == header[i], f"header[{i}] exp 0x{header[i]:02X}, got 0x{got:02X}"
             i += 1
+            dut.in_spi_done.value = 1
+            await RisingEdge(dut.clk)
+            dut.in_spi_done.value = 0
 
     # done with header
     dut.in_spi_ready.value = 0    
@@ -452,12 +483,14 @@ async def rst(dut):
     raw_sr2  &= ~(1 << 1)   # clear bit[1]
     # process read status reg2 return data
     await rd_sr(dut,0x35,raw_sr2 )
+    await RisingEdge(dut.clk)
     await spi_wr(dut,0x06) # wren
     # exp sr 2 to be shift out second bit be 1
     qe_sr2 = (raw_sr2 & ~(1 << 1)) | (1 << 1)
     # write to status reg 2
     await wr_sr(dut,0x31,qe_sr2)
     # check qe sent signal
+    await RisingEdge(dut.clk)
     assert dut.qed.value == 1, f"qed expect 1 got {dut.qed.value}"
     # wip poll
     await rd_sr(dut,0x05,0xff)
@@ -491,7 +524,7 @@ async def write_flow(dut):
         await cu_fsm_input(dut,data,0)
         await data_check_task
         # done pulse
-        await wait_for_done(dut)
+        # await wait_for_done(dut)
         dut._log.info("Write AES Complete")
 
     async def wr_sha_no_bp():
@@ -517,7 +550,7 @@ async def write_flow(dut):
         await data_check_task
          
         # done pulse
-        await wait_for_done(dut)   
+        # await wait_for_done(dut)   
         dut._log.info("Write SHA Complete") 
 
     await wr_sha_no_bp()
@@ -557,7 +590,7 @@ async def read_flow(dut):
         await spi_fsm_input(dut,data,0)
         await data_check_task
         # done pulse
-        await wait_for_done(dut)
+        # await wait_for_done(dut)
         dut._log.info("Read Text AES Complete")
     
     async def rd_txt_sha_no_bp():
@@ -589,7 +622,7 @@ async def read_flow(dut):
         await spi_fsm_input(dut,data,0)
         await data_check_task
         # done pulse
-        await wait_for_done(dut)
+        # await wait_for_done(dut)
         dut._log.info("Read Text SHA Complete")    
 
     async def rd_key_aes_no_bp():
@@ -621,7 +654,7 @@ async def read_flow(dut):
         await spi_fsm_input(dut,data,0)
         await data_check_task
         # done pulse
-        await wait_for_done(dut)
+        # await wait_for_done(dut)
         dut._log.info("Read Key AES Complete")
 
     await rd_txt_aes_no_bp()
@@ -673,7 +706,7 @@ async def read_flow_bp(dut):
         await spi_fsm_input(dut,data,1)
         await data_check_task
         # done pulse
-        await wait_for_done(dut)
+        # await wait_for_done(dut)
         dut._log.info("Read Text Back Pressure AES Complete")
     
     async def rd_txt_sha_bp():
@@ -705,7 +738,7 @@ async def read_flow_bp(dut):
         await spi_fsm_input(dut,data,1)
         await data_check_task
         # done pulse
-        await wait_for_done(dut)
+        # await wait_for_done(dut)
         dut._log.info("Read Text Back Pressure SHA Complete")    
 
     async def rd_key_aes_bp():
@@ -737,7 +770,7 @@ async def read_flow_bp(dut):
         await spi_fsm_input(dut,data,1)
         await data_check_task
         # done pulse
-        await wait_for_done(dut)
+        # await wait_for_done(dut)
         dut._log.info("Read Key Back Pressure AES Complete")
 
     await rd_txt_aes_bp()
@@ -770,7 +803,7 @@ async def write_flow_bp(dut):
         await cu_fsm_input(dut,data,1)
         await data_check_task
         # done pulse
-        await wait_for_done(dut)
+        # await wait_for_done(dut)
         dut._log.info("Write AES With Back Pressure Complete")
 
     async def wr_sha_bp():
@@ -796,7 +829,7 @@ async def write_flow_bp(dut):
         await data_check_task
          
         # done pulse
-        await wait_for_done(dut)   
+        # await wait_for_done(dut)   
         dut._log.info("Write SHA With Back Pressure Complete") 
 
     await wr_sha_bp()

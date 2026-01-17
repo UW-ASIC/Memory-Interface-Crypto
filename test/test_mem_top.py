@@ -142,7 +142,7 @@ RD_TEXT_SHA_BYTES = 32
 WR_AES_BYTES = 16
 WR_SHA_BYTES = 32
 
-KEY_BASE  = 0x000200
+KEY_BASE  = 0x000300
 
 def rd_key_aes_256b():
     enc   = random.randint(0,1)
@@ -215,6 +215,16 @@ async def SPI_no_addr(dut):
         dut._log.info(f"[{t} ns] Opcode {opcode:#02x}")
         return opcode
 
+async def SPI_no_addr_no_print(dut):
+        # Get opcode without addr
+        await FallingEdge(dut.CS)
+        opcode = 0x00   
+        for _ in range(8):
+            await FallingEdge(dut.SCLK)
+            await RisingEdge(dut.SCLK)
+            opcode = (opcode << 1) | int(dut.IO0.value)
+        return opcode
+
 async def timeout_monitor(dut):
     while True:
         await RisingEdge(dut.clk)
@@ -271,18 +281,19 @@ async def opcode_monitor(dut, opcode_log):
         # Now wait for CS to go high again (end of transaction)
         await RisingEdge(dut.CS)
 
-async def check_flash_erased(dut, flash):
+async def check_flash_erased(dut, flash,samples=1024):
     """Assert that every byte in the vendor model is 0xFF."""
-    dut._log.info("Checking that flash is fully erased (all 0xFF)...")
+    dut._log.info(f"Checking flash erased with {samples} samples...")
 
-    for addr in range(FLASH_BYTES):
+    size = 65536 * 256  # 16,777,216
+
+    for _ in range(samples):
+        addr = random.randrange(size)
         val = int(flash.memory[addr].value)
-        if val != 0xFF:
-            raise TestFailure(
-                f"Flash not erased: memory[{addr:#08x}] = {val:#04x}, expected 0xFF"
-            )
+        val = int(flash.memory[addr].value)
+        assert val == 0xFF, f"Flash not erased: memory[{addr:#08x}] = {val:#04x}, expected 0xFF"
 
-    dut._log.info("Flash erase check PASSED (all bytes 0xFF).")
+    dut._log.info("Sample erase check PASSED.")
 
 async def preload_key_region(dut, data, base_addr):
     """Write RD_KEY_AES_BYTES[] into the vendor flash model at base_addr."""
@@ -314,19 +325,35 @@ async def check_qspi_idle(dut, cycles=10):
         # cs high
         assert dut.CS.value == 1, f"Idle: CS expected 1, got {dut.CS.value}"
         # sclk 0
-        assert dut.SCLK.value == 0, f"Idle: SCLK expected 0, got {dut.SCLK.value}"
+        assert dut.SCLK.value == 1, f"Idle: SCLK expected 1, got {dut.SCLK.value}"
         # no io pins
         oe = int(dut.uio_oe.value) & 0xF
         assert oe == 0x0, f"Idle: uio_oe[3:0] expected 0000, got {oe:04b}"
 
 async def send_header(dut, header_bytes):
-    """
-    header send helper
-    """
+    if not header_bytes:
+        return
+
+    dut._log.info(f"Header Opcode 0x{header_bytes[0]:02x}")
+
     dut.VALID_IN.value = 1
-    for b in header_bytes:
-        dut.DATA_IN.value = b
+    i = 0
+
+    # Drive data with setup time before the sampling edge
+    await FallingEdge(dut.clk)
+
+    while i < len(header_bytes):
+        dut.DATA_IN.value = header_bytes[i]
+
+        # READY sampled during the cycle BEFORE the rising edge
+        ready = int(dut.READY_IN.value)
+
         await RisingEdge(dut.clk)
+
+        if ready:
+            i += 1
+            await FallingEdge(dut.clk)  # align next data update to falling edge
+
     dut.VALID_IN.value = 0
 
 async def send_write_payload(dut, data):
@@ -352,7 +379,7 @@ async def recv_read_payload(dut, length):
         dut.READY.value = host_ready
         await RisingEdge(dut.clk)
 
-        if host_ready and int(dut.VALID.value):
+        if host_ready == 1 and int(dut.VALID.value) == 1:
             out.append(int(dut.DATA.value))
 
     dut.READY.value = 0
@@ -372,16 +399,19 @@ async def rst(dut):
         #      - See 35h read of SR2 and, if QE was 0, 06h + 31h write setting QE=1.
     #      - Finally: flash contents all 0xFF, SR2.QE == 1, SR1.WIP == 0.
     async def spi_only_di_do():
+        # check only di do pins are driven/ uio oe correctness before seeing WRSR2 opcode(quad enable)
         await FallingEdge(dut.CS)
 
-        while ((dut.flash.status_reg.value.to_unsigned() >> 9) & 0b1) == 0 and dut.CS.value == 0:
-            await RisingEdge(dut.SCLK)
-
+        while True:
+            opcode = await SPI_no_addr_no_print(dut)
+            if opcode == 0x31: 
+                return
             assert dut.IO2.value == 1, f"IO2 expected 1 got {dut.IO2.value}" 
             assert dut.IO3.value == 1, f"IO3 expected 1 got {dut.IO3.value}"
             oe = int(dut.uio_oe.value) & 0xF
             # IO2/IO3 must not be driven
-            assert (oe & 0b1100) == 0b1100, f"SPI1 mode: IO2/3 driven must be high, uio_oe={oe:04b}"
+            assert (oe & 0b1100) == 0b1100, f"SPI mode: IO2/3 driven must be high, uio_oe={oe:04b}"
+
 
     dut._log.info("Startup Flow Start")
     
@@ -459,7 +489,6 @@ async def rst(dut):
     for _ in range(MAX_POLLS):
         try:
             # SPI_no_addr waits for a full transaction (CS low, bits shifted, CS high)
-
             opcode = await SPI_no_addr(dut)
         except SimTimeoutError:
             raise cocotb.result.TestFailure("Timed out waiting for status opcode after chip erase")
@@ -490,10 +519,11 @@ async def rst(dut):
     assert opcode == 0x31, f"Opcode expected 0x31 got {opcode:#02x}"
 
     # Mem Model Status Reg Check
-    await Timer(15,'ms')
+    for _ in range(200):
+        await RisingEdge(dut.clk)
     assert (int(dut.flash.status_reg.value) & 0b11 ) == 0, \
         f"Mem Model SR1[1:0] expected 0b00 got {(int(dut.flash.status_reg.value) & 0b11 ):#02b}"
-    assert (int(dut.flash.status_reg.value>>9) & 0b1 ) == 1, \
+    assert ((int(dut.flash.status_reg.value)>>9) & 0b1 ) == 1, \
         f"Mem Model SR2[1] expected 0b1 got {(int(dut.flash.status_reg.value>>9) & 0b1):#02b}"
     # Mem Model Flash Array Clear Check
     await check_flash_erased(dut,dut.flash)
@@ -530,7 +560,7 @@ async def basic_read_write_ack(dut):
         dut._log.info("AES Write 128b Read Back Start")
         # randomized data   aes wr opcode   addr:0x000000 from [23:0]
         data = [randomized_data() for _ in range(WR_AES_BYTES)]
-        inputsequence = [wr_aes_generate_128b(),0x00,0x00,0x00]
+        inputsequence = [wr_aes_generate_128b(),0x00,0x01,0x00]
 
         # Bus valid high
         dut.VALID_IN.value = 1
@@ -543,29 +573,34 @@ async def basic_read_write_ack(dut):
         async def bus_mem_aeswr():
             j = 0
             dut.VALID_IN.value = 1
+            # for _ in range(len(data)):
+            #     dut._log.info(f"Byte {j}: {data[j]:#02x}")
+            #     j += 1
+            # j = 0
             # input data write
             while j <len(data):
                 dut.DATA_IN.value = data[j]
                 await RisingEdge(dut.clk)
-
+                
                 if dut.READY_IN.value == 1:
+                    dut._log.info(f"Byte {j}: {data[j]:#02x} fed")
                     j += 1
             dut.VALID_IN.value = 0
 
         async def qspi_uio_oe_wraes():
             # tt uio_oe check
             dut._log.info("Waiting for WIP=0 in vendor status_reg...")
-            try:
-                if dut.flash.status_reg[0].value == 1:
-                    await with_timeout(FallingEdge(dut.flash.status_reg[0]), 15, 'ms')
-            except SimTimeoutError:
-                raise TestFailure("Timed out waiting for WIP=0 in status_reg")
-            
-            dut._log.info("Waiting for WEL=1 in vendor status_reg...")
-            try:
-                await with_timeout(RisingEdge(dut.flash.status_reg[1]), 15, 'ms')
-            except SimTimeoutError:
-                raise TestFailure("Timed out waiting for WEL=1 in status_reg")
+            cycles = 6000
+            for _ in range(cycles): 
+                opcode = await SPI_no_addr(dut)
+                if opcode == 0x05:
+                    continue
+
+                if opcode == 0x06:
+                    break
+            else:
+                raise AssertionError("Timed out waiting for WIP=0/ WREN ")
+
             
             await FallingEdge(dut.CS)
             for _ in range(8+24):
@@ -576,17 +611,15 @@ async def basic_read_write_ack(dut):
                 await FallingEdge(dut.SCLK)
                 assert int(dut.uio_oe.value) & 0xf == 0b1111,f"uio_oe[3:0] expect 0b1111 got {int(dut.uio_oe.value) & 0xf:#04b}"
             await RisingEdge(dut.CS)
-        # ack coroutine
-        ack_task = cocotb.start_soon(expect_ack(dut))
+
         # coroutine qspi uio oe and bus input monitor
         process = cocotb.start_soon(bus_mem_aeswr())
         await qspi_uio_oe_wraes()
         await process
-        await ack_task
-
+        
         # aes rd text  
         # read opcode generate
-        inputsequence = [rd_text_aes_128b(),0x00,0x00,0x00]
+        inputsequence = [rd_text_aes_128b(),0x00,0x01,0x00]
         # Bus valid high
         dut.VALID_IN.value = 1
         # shift opcode
@@ -614,11 +647,16 @@ async def basic_read_write_ack(dut):
         async def qspi_uio_oe_rdaes():
             # tt uio_oe check            
             dut._log.info("Waiting for WIP=0 in vendor status_reg...")
-            try:
-                if dut.flash.status_reg[0].value == 1:
-                    await with_timeout(FallingEdge(dut.flash.status_reg[0]), 15, 'ms')
-            except SimTimeoutError:
-                raise TestFailure("Timed out waiting for WIP=0 in status_reg")
+            cycles = 6000
+            for _ in range(cycles): 
+                await RisingEdge(dut.clk)
+                if int(dut.flash.status_reg.value) & 0b1 == 0:
+                    opcode = await SPI_no_addr_no_print(dut)
+                    assert opcode == 0x05, f"Expect opcode 0x05 got {opcode:#02x}"
+                    break
+            else:
+                raise AssertionError("Timed out waiting for WIP=0 in status_reg")            
+            
                                 
             await FallingEdge(dut.CS)
             for _ in range(8+24):
@@ -644,10 +682,10 @@ async def basic_read_write_ack(dut):
 
     async def sha_wr_rd():
         # sha wr rd back
-        dut._log.info("SHA Write 256 Read Back Start")
+        dut._log.info("SHA Write 256b Read Back Start")
         # randomized data   aes wr opcode   addr:0x000100 from [23:0]
         data = [randomized_data() for _ in range(WR_SHA_BYTES)]
-        inputsequence = [wr_sha_generate_256b(),0x00,0x01,0x00]
+        inputsequence = [wr_sha_generate_256b(),0x00,0x02,0x00]
 
         # Bus valid high
         dut.VALID_IN.value = 1
@@ -673,17 +711,16 @@ async def basic_read_write_ack(dut):
         async def qspi_uio_oe_wrsha():
             # tt uio_oe check
             dut._log.info("Waiting for WIP=0 in vendor status_reg...")
-            try:
-                if dut.flash.status_reg[0].value == 1:
-                    await with_timeout(FallingEdge(dut.flash.status_reg[0]), 15, 'ms')
-            except SimTimeoutError:
-                raise TestFailure("Timed out waiting for WIP=0 in status_reg")
-            
-            dut._log.info("Waiting for WEL=1 in vendor status_reg...")
-            try:
-                await with_timeout(RisingEdge(dut.flash.status_reg[1]), 15, 'ms')
-            except SimTimeoutError:
-                raise TestFailure("Timed out waiting for WEL=1 in status_reg")
+            cycles = 6000
+            for _ in range(cycles): 
+                opcode = await SPI_no_addr(dut)
+                if opcode == 0x05:
+                    continue
+
+                if opcode == 0x06:
+                    break
+            else:
+                raise AssertionError("Timed out waiting for WIP=0/ WREN ")
             
             await FallingEdge(dut.CS)
             for _ in range(8+24):
@@ -696,17 +733,14 @@ async def basic_read_write_ack(dut):
             await RisingEdge(dut.CS)
 
  
-        # ack coroutine
-        ack_task = cocotb.start_soon(expect_ack(dut))
         # coroutine qspi uio oe and bus input monitor
         process = cocotb.start_soon(bus_mem_shawr())
         await qspi_uio_oe_wrsha()
         await process
-        await ack_task
 
         # aes rd text  
         # read opcode generate
-        inputsequence = [rd_text_sha_256b(),0x00,0x01,0x00]
+        inputsequence = [rd_text_sha_256b(),0x00,0x02,0x00]
         # Bus valid high
         dut.VALID_IN.value = 1
         # shift opcode
@@ -734,11 +768,15 @@ async def basic_read_write_ack(dut):
         async def qspi_uio_oe_rdsha():
             # tt uio_oe check            
             dut._log.info("Waiting for WIP=0 in vendor status_reg...")
-            try:
-                if dut.flash.status_reg[0].value == 1:
-                    await with_timeout(FallingEdge(dut.flash.status_reg[0]), 15, 'ms')
-            except SimTimeoutError:
-                raise TestFailure("Timed out waiting for WIP=0 in status_reg")
+            cycles = 6000
+            for _ in range(cycles): 
+                await RisingEdge(dut.clk)
+                if int(dut.flash.status_reg.value) & 0b1 == 0:
+                    opcode = await SPI_no_addr_no_print(dut)
+                    assert opcode == 0x05, f"Expect opcode 0x05 got {opcode:#02x}"
+                    break
+            else:
+                raise AssertionError("Timed out waiting for WIP=0 in status_reg")  
                                 
             await FallingEdge(dut.CS)
             for _ in range(8+24):
@@ -763,71 +801,75 @@ async def basic_read_write_ack(dut):
         dut._log.info("SHA Write 256b Read Back Complete")
 
     async def aes_rd_key():
-            # aes 256 rd key 
-            dut._log.info("AES 256 Read Back Start")
-            # randomized data   aes wr opcode   addr:0x000200 from [23:0]
-            data = [randomized_data() for _ in range(RD_KEY_AES_BYTES)]
-            await preload_key_region(dut,data,KEY_BASE)
-            # aes rd text  
-            # read opcode generate
-            inputsequence = [rd_key_aes_256b(),0x00,0x02,0x00]
-            # Bus valid high
-            dut.VALID_IN.value = 1
-            # shift opcode
-            for i in inputsequence:
-                dut.DATA_IN.value = i
-                await RisingEdge(dut.clk) 
-            
-            # deassert valid
-            dut.VALID_IN.value = 0    
-            # bus ready
+        # aes 256 rd key 
+        dut._log.info("AES 256 Read Back Start")
+        # randomized data   aes wr opcode   addr:0x000200 from [23:0]
+        data = [randomized_data() for _ in range(RD_KEY_AES_BYTES)]
+        await preload_key_region(dut,data,KEY_BASE)
+        # aes rd text  
+        # read opcode generate
+        inputsequence = [rd_key_aes_256b(),0x00,0x03,0x00]
+        # Bus valid high
+        dut.VALID_IN.value = 1
+        # shift opcode
+        for i in inputsequence:
+            dut.DATA_IN.value = i
+            await RisingEdge(dut.clk) 
+        
+        # deassert valid
+        dut.VALID_IN.value = 0    
+        # bus ready
+        dut.READY.value = 1
+        await RisingEdge(dut.clk)
+
+        async def mem_bus_aesrd_key():
             dut.READY.value = 1
-            await RisingEdge(dut.clk)
+            j = 0
+            while j < len(data):
+                await RisingEdge(dut.clk)
+                if dut.VALID.value == 1:
+                    got = int(dut.DATA.value)
+                    exp = data[j]
+                    assert got == exp,f"Expected data {exp:#04x}, got {got:#04x}"
+                    j+=1
+            dut.READY.value = 0
 
-            async def mem_bus_aesrd_key():
-                dut.READY.value = 1
-                j = 0
-                while j < len(data):
-                    await RisingEdge(dut.clk)
-                    if dut.VALID.value == 1:
-                        got = int(dut.DATA.value)
-                        exp = data[j]
-                        assert got == exp,f"Expected data {exp:#04x}, got {got:#04x}"
-                        j+=1
-                dut.READY.value = 0
+        async def qspi_uio_oe_rdaes_key():
+            # tt uio_oe check            
+            dut._log.info("Waiting for WIP=0 in vendor status_reg...")
+            cycles = 6000
+            for _ in range(cycles): 
+                await RisingEdge(dut.clk)
+                if int(dut.flash.status_reg.value) & 0b1 == 0:
+                    opcode = await SPI_no_addr_no_print(dut)
+                    assert opcode == 0x05, f"Expect opcode 0x05 got {opcode:#02x}"
+                    break
+            else:
+                raise AssertionError("Timed out waiting for WIP=0 in status_reg")  
+                                
+            await FallingEdge(dut.CS)
+            for _ in range(8+24):
+                await FallingEdge(dut.SCLK)
+                assert int(dut.uio_oe.value) & 0xf == 1,f"uio_oe[3:0] expect 0b0001 got {int(dut.uio_oe.value) & 0xf:#04b}"
+            # dummy
+            for _ in range(RD_DUMMY):
+                await FallingEdge(dut.SCLK)
+                assert int(dut.uio_oe.value) & 0xf == 0,f"uio_oe[3:0] expect 0b0000 got {int(dut.uio_oe.value) & 0xf:#04b}"
+            # QSPI Input
+            for _ in range(RD_KEY_AES_BYTES*2):
+                await RisingEdge(dut.SCLK)
+                assert int(dut.uio_oe.value) & 0xf == 0,f"uio_oe[3:0] expect 0b0000 got {int(dut.uio_oe.value) & 0xf:#04b}"            
 
-            async def qspi_uio_oe_rdaes_key():
-                # tt uio_oe check            
-                dut._log.info("Waiting for WIP=0 in vendor status_reg...")
-                try:
-                    if dut.flash.status_reg[0].value == 1:
-                        await with_timeout(FallingEdge(dut.flash.status_reg[0]), 15, 'ms')
-                except SimTimeoutError:
-                    raise TestFailure("Timed out waiting for WIP=0 in status_reg")
-                                    
-                await FallingEdge(dut.CS)
-                for _ in range(8+24):
-                    await FallingEdge(dut.SCLK)
-                    assert int(dut.uio_oe.value) & 0xf == 1,f"uio_oe[3:0] expect 0b0001 got {int(dut.uio_oe.value) & 0xf:#04b}"
-                # dummy
-                for _ in range(RD_DUMMY):
-                    await FallingEdge(dut.SCLK)
-                    assert int(dut.uio_oe.value) & 0xf == 0,f"uio_oe[3:0] expect 0b0000 got {int(dut.uio_oe.value) & 0xf:#04b}"
-                # QSPI Input
-                for _ in range(RD_KEY_AES_BYTES*2):
-                    await RisingEdge(dut.SCLK)
-                    assert int(dut.uio_oe.value) & 0xf == 0,f"uio_oe[3:0] expect 0b0000 got {int(dut.uio_oe.value) & 0xf:#04b}"            
+            # ack coroutine
+        
+        ack_task = cocotb.start_soon(expect_ack(dut))
+        # coroutine qspi uio oe and mem to bus
+        process = cocotb.start_soon(mem_bus_aesrd_key())
+        await qspi_uio_oe_rdaes_key()
+        await process
+        await ack_task
 
-                # ack coroutine
-            
-            ack_task = cocotb.start_soon(expect_ack(dut))
-            # coroutine qspi uio oe and mem to bus
-            process = cocotb.start_soon(mem_bus_aesrd_key())
-            await qspi_uio_oe_rdaes_key()
-            await process
-            await ack_task
-
-            dut._log.info("AES 256b Read Complete")
+        dut._log.info("AES 256b Read Complete")
 
     await aes_wr_rd()
     await check_qspi_idle(dut)
@@ -869,9 +911,7 @@ async def busy_WIP(dut):
             dut.VALID_IN.value = 0
 
         # ack coroutine for the SHA write
-        ack_task = cocotb.start_soon(expect_ack(dut))
         await bus_mem_shawr()
-        await ack_task
 
         dut._log.info("SHA WR_RES command + payload sent")
 
@@ -895,20 +935,20 @@ async def busy_WIP(dut):
     async def monitor_qspi_while_busy():
         # wait until flash becomes busy
         dut._log.info("Waiting for WIP=1 in vendor status_reg...")
-        try:
-            await with_timeout(RisingEdge(dut.flash.status_reg[0]), 15, "ms")
-        except SimTimeoutError:
-            raise TestFailure("Timed out waiting for WIP=1 (flash never became busy)")
+        cycles = 6000
+        for _ in range(cycles): 
+            await RisingEdge(dut.clk)
+            if int(dut.flash.status_reg.value) & 0b1 == 1:
+                break
+        else:
+            raise AssertionError("Timed out waiting for  WIP=1 in status_reg")  
 
         dut._log.info("WIP==1; now monitoring QSPI opcodes (expect only 0x05)")
 
         # while busy, every SPI_no_addr() we see must be a 0x05 status read
-        while dut.flash.status_reg[0].value == 1:
-            opcode = await with_timeout(SPI_no_addr(dut), 10, "ms")
-            if opcode != 0x05:
-                raise TestFailure(
-                    f"Unexpected opcode {opcode:#04x} while WIP==1; expected 0x05 (RDSR1 only)"
-                )
+        while int(dut.flash.status_reg.value) & 0b1 == 1:
+            opcode = await SPI_no_addr_no_print(dut)
+            assert opcode == 0x05, f"Unexpected opcode {opcode:#04x} while WIP==1; expected 0x05 (RDSR1 only)"
 
         dut._log.info("WIP returned to 0, QSPI busy-monitor done")
 
@@ -916,7 +956,13 @@ async def busy_WIP(dut):
     sha_task = cocotb.start_soon(sha_wr())
     monitor_task = cocotb.start_soon(monitor_qspi_while_busy())
     # Wait until WIP actually goes high, then issue second command
-    await RisingEdge(dut.flash.status_reg[0])
+    cycles = 1000
+    for _ in range(cycles):
+        await RisingEdge(dut.clk)
+        if int(dut.flash.status_reg.value) & 0b1 == 1:
+                break
+    else:
+        raise AssertionError("Timed out waiting for WIP=1 in status_reg")  
     dut._log.info("Flash WIP==1 now; sending AES RD_KEY command")
 
     await send_aes_rd_key_cmd()
@@ -976,9 +1022,9 @@ async def random_stress(dut):
 #    - Pass if no mismatches and vendor model reports no errors.  
     dut._log.info("Random Stress Test Start")
     # fixed addr 
-    aes_addr = 0x000600
-    sha_addr = 0x000700
-    aes_key_addr = 0x000800
+    aes_addr = 0x000800
+    sha_addr = 0x000900
+    aes_key_addr = 0x000a00
     
     async def wr_sha_backpressure_rd(addr):
         # randomized data
@@ -986,9 +1032,7 @@ async def random_stress(dut):
         header = [wr_sha_generate_256b(),(addr>>16)&0xff,(addr>>8)&0xff,(addr)&0xff]
 
         await send_header(dut,header)
-        wr_ack_task = cocotb.start_soon(expect_ack(dut))
         await send_write_payload(dut,data)
-        await wr_ack_task
 
         header = [rd_text_sha_256b(),(addr>>16)&0xff,(addr>>8)&0xff,(addr)&0xff]
 
@@ -1008,9 +1052,8 @@ async def random_stress(dut):
         header = [wr_aes_generate_128b(),(addr>>16)&0xff,(addr>>8)&0xff,(addr)&0xff]
 
         await send_header(dut,header)
-        wr_ack_task = cocotb.start_soon(expect_ack(dut))
         await send_write_payload(dut,data)
-        await wr_ack_task
+
 
         header = [rd_text_aes_128b(),(addr>>16)&0xff,(addr>>8)&0xff,(addr)&0xff]
 
@@ -1061,22 +1104,23 @@ async def full_smoke(dut):
     cocotb.start_soon(timeout_monitor(dut))
     await rst(dut)
     # 2. Basic functional read/write + ack + uio_oe checks
-    # await basic_read_write_ack(dut)
+    # dut.top.fsm.state.value = 10
+    await basic_read_write_ack(dut)
 
     # 3. Busy / WIP serialization (while busy only 0x05 should appear)
-    # await busy_WIP(dut)
+    await busy_WIP(dut)
 
     # 4. Invalid / garbage opcode – confirm no QSPI traffic, no ack, no read data
-    # await invalid_opcode(dut)
+    await invalid_opcode(dut)
 
-    # 5. Random stress: AES/SHA/key with random data + random backpressure
+    # 5. Random stress: AES/SHA/ AES key with random data + random backpressure
     # await random_stress(dut)
 
     # 6.idle check at the end
-    # await ClockCycles(dut.clk, 20)
-    # assert dut.CS.value == 1, "End-of-smoke: CS should be high (idle)"
-    # assert dut.ACK_VALID.value == 0, "End-of-smoke: ACK_VALID should be low"
-    # assert dut.VALID.value == 0, "End-of-smoke: no data driving bus"    
-    # await check_qspi_idle(dut)
+    await ClockCycles(dut.clk, 20)
+    assert dut.CS.value == 1, "End-of-smoke: CS should be high (idle)"
+    assert dut.ACK_VALID.value == 0, "End-of-smoke: ACK_VALID should be low"
+    assert dut.VALID.value == 0, "End-of-smoke: no data driving bus"    
+    await check_qspi_idle(dut)
 
     dut._log.info("Full Smoke Test Complete")

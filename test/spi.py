@@ -308,12 +308,11 @@ async def wr_rd_do_di(dut):
             await RisingEdge(dut.clk)
             dut.in_tx_valid.value = 0
             break
-    dut.r_w.value = 1
     dut.in_rx_ready.value = 1
     await RisingEdge(dut.out_done)
     t = get_sim_time(unit='ns')
     dut._log.info(f" out done @ [{t} ns]")
-    
+    dut.r_w.value = 1
     got = await rdsr_task
     data_out = await data_from_dut
     dut.in_start.value = 0
@@ -340,6 +339,8 @@ async def wr_wr_do_do(dut):
     await send_byte(dut, byte2exp)
 
     byte1,byte2 = await wr_wr_task
+
+    await RisingEdge(dut.clk)
     dut.in_start.value = 0
     await RisingEdge(dut.clk)
 
