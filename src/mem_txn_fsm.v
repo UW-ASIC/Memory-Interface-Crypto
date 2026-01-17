@@ -20,6 +20,8 @@ module mem_txn_fsm(
     input wire [1:0] out_fsm_opcode,
     input wire [23:0] out_address,
 
+    output reg fsm_idle,
+
     // QSPI
 
     //---- Transaction FSM connections ----
@@ -60,21 +62,20 @@ module mem_txn_fsm(
     localparam [7:0] OPC_CHIP_ERASE = 8'h60; //chip erase
 
     // startup sequence
-    localparam start = 5'd0, rst_ena = 5'd1, rst = 5'd2,
-    global_unlock = 5'd3, chip_erase = 5'd4,
-    rd_sr2_send = 5'd5, rd_sr2_send_wait_done = 5'd6, rd_sr2_rd_wait_done = 5'd28, rd_sr2_rd = 5'd7,
-    wr_sr2_opcode = 5'd8, wr_sr2_opcode_wait_done = 5'd30, wr_sr2_data = 5'd9, wr_sr2_data_wait_done = 5'd29;
+    localparam start = 6'd0, rst_ena = 6'd1, rst = 6'd2,
+    global_unlock = 6'd3, chip_erase = 6'd4,
+    rd_sr2_send = 6'd5, rd_sr2_send_wait_done = 6'd6, rd_sr2_rd_wait_done = 6'd7, rd_sr2_rd = 6'd8,
+    wr_sr2_opcode = 6'd9, wr_sr2_opcode_wait_done = 6'd10, wr_sr2_data = 6'd11, wr_sr2_data_wait_done = 6'd12;
 
     // normal workflow
-    localparam idle = 5'd10, dummy = 5'd11, receive_data = 5'd12,
-    send_data = 5'd13, wait_done = 5'd14;
+    localparam idle = 6'd13, dummy = 6'd14, receive_data = 6'd15,
+    send_data = 6'd16, wait_done = 6'd17;
 
     // shared subroutines / error
-    localparam send_opcode = 5'd15, send_a1 = 5'd16, send_a2 = 5'd17, send_a3 = 5'd18,
-    gap = 5'd19, spi_wait = 5'd20, wren = 5'd21,
-    wip_poll_send = 5'd22, wip_poll_rd = 5'd23, wip_poll_wait = 5'd24,
-    wip_poll_send_wait_done = 5'd25, wip_poll_rd_wait_done = 5'd26, err = 5'd27;
-
+    localparam send_opcode = 6'd18, send_a1 = 6'd19, send_a2 = 6'd20, send_a3 = 6'd21, addr_wait_done = 6'd22,
+    gap = 6'd23, spi_wait = 6'd24, wren = 6'd25,
+    wip_poll_send = 6'd26, wip_poll_rd = 6'd27, wip_poll_wait = 6'd28,
+    wip_poll_send_wait_done = 6'd29, wip_poll_rd_wait_done = 6'd30, err = 6'd31;
 
     //waiting time constant 
     // gap
@@ -125,15 +126,16 @@ module mem_txn_fsm(
     localparam RD_KEY = 2'b00, RD_TEXT = 2'b01, WR_RES = 2'b10, INVALID = 2'b11;
 
     // current state
-    reg [4:0] state = 5'd0 ,next_state = 5'd0;
+    reg [5:0] state = 6'd0 ,next_state = 6'd0;
     // state to return to from wren
-    reg [4:0] wren_return_state = 5'd0, n_wren_return_state = 5'd0;
+    reg [5:0] wren_return_state = 6'd0, n_wren_return_state = 6'd0;
     // state to return to from spi- wait- gap
-    reg [4:0] gap_return_state = 5'd0, n_gap_return_state = 5'd0;    
+    reg [5:0] gap_return_state = 6'd0, n_gap_return_state = 6'd0;    
     // state to return to from wip
-    reg [4:0] wip_return_state = 5'd0, n_wip_return_state = 5'd0;  
+    reg [5:0] wip_return_state = 6'd0, n_wip_return_state = 6'd0;  
     // state to return to after opcode + 3 address bytes
-    reg [4:0] opaddr_return_state, n_opaddr_return_state; 
+    reg [5:0] opaddr_return_state, n_opaddr_return_state;
+
 
     // counter
     reg [26:0] counter = 27'd0, n_counter = 27'd0;
@@ -155,7 +157,7 @@ module mem_txn_fsm(
 
     // to be changed for back pressure
     // cu to fsm only high when idle or send data when spi is ready or the buffer is empty
-    assign out_cu_ready  = (state == idle) || (state == send_data && (!out_spi_valid));
+    assign out_cu_ready  = (state == idle) || (state == send_data && ((!out_spi_valid) || in_spi_ready));
     // spi to fsm only high when receiving data of single handshake state during start up or
     // receive data sates when cu is ready or buffer to cu is empty
     assign out_spi_ready = (state == rd_sr2_rd) || (state == wip_poll_rd) || (state == dummy)
@@ -240,8 +242,14 @@ module mem_txn_fsm(
         n_out_spi_data  = out_spi_data;
         n_out_cu_valid  = out_cu_valid;
         n_out_cu_data   = out_cu_data;
-        in_fsm_done = (state == gap && gap_return_state == idle && counter == 0 && cu_empty_next); 
-        in_start = 0;         
+        // signal to cu
+        in_fsm_done = (state == send_data && (total_bytes_left == 1 && in_cu_valid && out_cu_ready))
+        || (state == receive_data && (total_bytes_left == 1 && out_spi_ready && in_spi_valid));
+        fsm_idle = (state == idle);
+
+        // in_fsm_done = (state == gap && gap_return_state == idle && cu_empty_next) || (state == wait_done && cu_empty_next) 
+        // || (state == send_data && (total_bytes_left == 1 && in_cu_valid && out_cu_ready)) || (state == send_data && total_bytes_left == 0);
+        in_start = 0;
         r_w = 1'b0;
         quad_enable = 1'b0;
         // test
@@ -438,8 +446,16 @@ module mem_txn_fsm(
                 // handshake -> consume this byte
                 if (out_spi_valid && in_spi_ready) begin
                     n_out_spi_valid = 1'b0;
-                    next_state = opaddr_return_state;
+                    next_state = addr_wait_done;
                 end 
+            end
+            // wait send addr 7:0 done
+            addr_wait_done: begin
+                in_start = 1'b1;
+                r_w = 1'b0;
+                quad_enable = 1'b0;     
+                n_out_spi_valid = 1'b0;
+                next_state = in_spi_done ? opaddr_return_state : addr_wait_done;                       
             end
             // start up flow
             // power on
@@ -670,9 +686,7 @@ module mem_txn_fsm(
 
                     // go to gap after all data being transfer to spi
                     if (total_bytes_left == 0) begin 
-                        next_state = spi_wait;
-                        n_gap_return_state = idle;
-
+                        next_state = wait_done;
                     end
                 end 
 
@@ -683,7 +697,16 @@ module mem_txn_fsm(
                     n_total_bytes_left = total_bytes_left - 1;
                 end
             end
+            // wait done signal during write after last byte sent 
+            wait_done: begin
+                in_start = 1'b1;
+                r_w = 1'b0; // write
+                quad_enable = 1'b1;   // quad output
+                next_state = in_spi_done ? gap : wait_done;
+                n_counter = in_spi_done ? opcode_gap : counter;
+                n_gap_return_state = idle;
 
+            end
             default: ;
         endcase
     end
@@ -720,6 +743,8 @@ module mem_txn_fsm(
             send_a1         : state_name = "send_a1";
             send_a2         : state_name = "send_a2";
             send_a3         : state_name = "send_a3";
+            addr_wait_done  : state_name = "addr_wait_done";
+
             gap             : state_name = "gap";
             spi_wait        : state_name = "spi_wait";
             wren            : state_name = "wren";
@@ -761,6 +786,8 @@ module mem_txn_fsm(
             send_a1         : next_state_name = "send_a1";
             send_a2         : next_state_name = "send_a2";
             send_a3         : next_state_name = "send_a3";
+            addr_wait_done  : next_state_name = "addr_wait_done";
+
             gap             : next_state_name = "gap";
             spi_wait        : next_state_name = "spi_wait";
             wren            : next_state_name = "wren";
@@ -774,167 +801,168 @@ module mem_txn_fsm(
             default         : next_state_name = "UNKNOWN";
         endcase
     // gap return-state name
-    case (gap_return_state)
-        // start up sequence
-        start                   : gap_rts_name = "start";
-        rst_ena                 : gap_rts_name = "rst_ena";
-        rst                     : gap_rts_name = "rst";
-        global_unlock           : gap_rts_name = "global_unlock";
-        chip_erase              : gap_rts_name = "chip_erase";
-        rd_sr2_send             : gap_rts_name = "rd_sr2_send";
-        rd_sr2_send_wait_done   : gap_rts_name = "rd_sr2_send_wait_done";
-        rd_sr2_rd_wait_done     : gap_rts_name = "rd_sr2_rd_wait_done";
-        rd_sr2_rd               : gap_rts_name = "rd_sr2_rd";
-        wr_sr2_opcode           : gap_rts_name = "wr_sr2_opcode";
-        wr_sr2_data             : gap_rts_name = "wr_sr2_data";
-        wr_sr2_data_wait_done        : gap_rts_name = "wr_sr2_data_wait_done";
-        // normal workflow
-        idle                    : gap_rts_name = "idle";
-        dummy                   : gap_rts_name = "dummy";
-        receive_data            : gap_rts_name = "receive_data";
-        send_data               : gap_rts_name = "send_data";
-        wait_done               : gap_rts_name = "wait_done";
+    // case (gap_return_state)
+    //     // start up sequence
+    //     start                   : gap_rts_name = "start";
+    //     rst_ena                 : gap_rts_name = "rst_ena";
+    //     rst                     : gap_rts_name = "rst";
+    //     global_unlock           : gap_rts_name = "global_unlock";
+    //     chip_erase              : gap_rts_name = "chip_erase";
+    //     rd_sr2_send             : gap_rts_name = "rd_sr2_send";
+    //     rd_sr2_send_wait_done   : gap_rts_name = "rd_sr2_send_wait_done";
+    //     rd_sr2_rd_wait_done     : gap_rts_name = "rd_sr2_rd_wait_done";
+    //     rd_sr2_rd               : gap_rts_name = "rd_sr2_rd";
+    //     wr_sr2_opcode           : gap_rts_name = "wr_sr2_opcode";
+    //     wr_sr2_data             : gap_rts_name = "wr_sr2_data";
+    //     wr_sr2_data_wait_done        : gap_rts_name = "wr_sr2_data_wait_done";
+    //     // normal workflow
+    //     idle                    : gap_rts_name = "idle";
+    //     dummy                   : gap_rts_name = "dummy";
+    //     receive_data            : gap_rts_name = "receive_data";
+    //     send_data               : gap_rts_name = "send_data";
+    //     wait_done               : gap_rts_name = "wait_done";
 
-        // shared subroutines / error
-        send_opcode             : gap_rts_name = "send_opcode";
-        send_a1                 : gap_rts_name = "send_a1";
-        send_a2                 : gap_rts_name = "send_a2";
-        send_a3                 : gap_rts_name = "send_a3";
-        gap                     : gap_rts_name = "gap";
-        spi_wait                : gap_rts_name = "spi_wait";
-        wren                    : gap_rts_name = "wren";
-        wip_poll_send           : gap_rts_name = "wip_poll_send";
-        wip_poll_rd             : gap_rts_name = "wip_poll_rd";
-        wip_poll_wait           : gap_rts_name = "wip_poll_wait";
-        wip_poll_send_wait_done : gap_rts_name = "wip_poll_send_wait_done";
-        wip_poll_rd_wait_done   : gap_rts_name = "wip_poll_rd_wait_done";
-        err                     : gap_rts_name = "err";
+    //     // shared subroutines / error
+    //     send_opcode             : gap_rts_name = "send_opcode";
+    //     send_a1                 : gap_rts_name = "send_a1";
+    //     send_a2                 : gap_rts_name = "send_a2";
+    //     send_a3                 : gap_rts_name = "send_a3";
+    //     gap                     : gap_rts_name = "gap";
+    //     spi_wait                : gap_rts_name = "spi_wait";
+    //     wren                    : gap_rts_name = "wren";
+    //     wip_poll_send           : gap_rts_name = "wip_poll_send";
+    //     wip_poll_rd             : gap_rts_name = "wip_poll_rd";
+    //     wip_poll_wait           : gap_rts_name = "wip_poll_wait";
+    //     wip_poll_send_wait_done : gap_rts_name = "wip_poll_send_wait_done";
+    //     wip_poll_rd_wait_done   : gap_rts_name = "wip_poll_rd_wait_done";
+    //     err                     : gap_rts_name = "err";
 
-        default                 : gap_rts_name = "UNKNOWN";
-    endcase
-
-
-    // wip return-state name
-    case (wip_return_state)
-        // start up sequence
-        start                   : wip_rts_name = "start";
-        rst_ena                 : wip_rts_name = "rst_ena";
-        rst                     : wip_rts_name = "rst";
-        global_unlock           : wip_rts_name = "global_unlock";
-        chip_erase              : wip_rts_name = "chip_erase";
-        rd_sr2_send             : wip_rts_name = "rd_sr2_send";
-        rd_sr2_send_wait_done   : wip_rts_name = "rd_sr2_send_wait_done";
-        rd_sr2_rd_wait_done     : wip_rts_name = "rd_sr2_rd_wait_done";
-        rd_sr2_rd               : wip_rts_name = "rd_sr2_rd";
-        wr_sr2_opcode           : wip_rts_name = "wr_sr2_opcode";
-        wr_sr2_data             : wip_rts_name = "wr_sr2_data";
-        wr_sr2_data_wait_done        : wip_rts_name = "wr_sr2_data_wait_done";
-        // normal workflow
-        idle                    : wip_rts_name = "idle";
-        dummy                   : wip_rts_name = "dummy";
-        receive_data            : wip_rts_name = "receive_data";
-        send_data               : wip_rts_name = "send_data";
-        wait_done               : wip_rts_name = "wait_done";
-
-        // shared subroutines / error
-        send_opcode             : wip_rts_name = "send_opcode";
-        send_a1                 : wip_rts_name = "send_a1";
-        send_a2                 : wip_rts_name = "send_a2";
-        send_a3                 : wip_rts_name = "send_a3";
-        gap                     : wip_rts_name = "gap";
-        spi_wait                : wip_rts_name = "spi_wait";
-        wren                    : wip_rts_name = "wren";
-        wip_poll_send           : wip_rts_name = "wip_poll_send";
-        wip_poll_rd             : wip_rts_name = "wip_poll_rd";
-        wip_poll_wait           : wip_rts_name = "wip_poll_wait";
-        wip_poll_send_wait_done : wip_rts_name = "wip_poll_send_wait_done";
-        wip_poll_rd_wait_done   : wip_rts_name = "wip_poll_rd_wait_done";
-        err                     : wip_rts_name = "err";
-
-        default                 : wip_rts_name = "UNKNOWN";
-    endcase
+    //     default                 : gap_rts_name = "UNKNOWN";
+    // endcase
 
 
-    // wren return-state name
-    case (wren_return_state)
-        // start up sequence
-        start                   : wren_rts_name = "start";
-        rst_ena                 : wren_rts_name = "rst_ena";
-        rst                     : wren_rts_name = "rst";
-        global_unlock           : wren_rts_name = "global_unlock";
-        chip_erase              : wren_rts_name = "chip_erase";
-        rd_sr2_send             : wren_rts_name = "rd_sr2_send";
-        rd_sr2_send_wait_done   : wren_rts_name = "rd_sr2_send_wait_done";
-        rd_sr2_rd_wait_done     : wren_rts_name = "rd_sr2_rd_wait_done";
-        rd_sr2_rd               : wren_rts_name = "rd_sr2_rd";
-        wr_sr2_opcode           : wren_rts_name = "wr_sr2_opcode";
-        wr_sr2_data             : wren_rts_name = "wr_sr2_data";
-        wr_sr2_data_wait_done        : wren_rts_name = "wr_sr2_data_wait_done";
-        // normal workflow
-        idle                    : wren_rts_name = "idle";
-        dummy                   : wren_rts_name = "dummy";
-        receive_data            : wren_rts_name = "receive_data";
-        send_data               : wren_rts_name = "send_data";
-        wait_done               : wren_rts_name = "wait_done";
+    // // wip return-state name
+    // case (wip_return_state)
+    //     // start up sequence
+    //     start                   : wip_rts_name = "start";
+    //     rst_ena                 : wip_rts_name = "rst_ena";
+    //     rst                     : wip_rts_name = "rst";
+    //     global_unlock           : wip_rts_name = "global_unlock";
+    //     chip_erase              : wip_rts_name = "chip_erase";
+    //     rd_sr2_send             : wip_rts_name = "rd_sr2_send";
+    //     rd_sr2_send_wait_done   : wip_rts_name = "rd_sr2_send_wait_done";
+    //     rd_sr2_rd_wait_done     : wip_rts_name = "rd_sr2_rd_wait_done";
+    //     rd_sr2_rd               : wip_rts_name = "rd_sr2_rd";
+    //     wr_sr2_opcode           : wip_rts_name = "wr_sr2_opcode";
+    //     wr_sr2_data             : wip_rts_name = "wr_sr2_data";
+    //     wr_sr2_data_wait_done        : wip_rts_name = "wr_sr2_data_wait_done";
+    //     // normal workflow
+    //     idle                    : wip_rts_name = "idle";
+    //     dummy                   : wip_rts_name = "dummy";
+    //     receive_data            : wip_rts_name = "receive_data";
+    //     send_data               : wip_rts_name = "send_data";
+    //     wait_done               : wip_rts_name = "wait_done";
 
-        // shared subroutines / error
-        send_opcode             : wren_rts_name = "send_opcode";
-        send_a1                 : wren_rts_name = "send_a1";
-        send_a2                 : wren_rts_name = "send_a2";
-        send_a3                 : wren_rts_name = "send_a3";
-        gap                     : wren_rts_name = "gap";
-        spi_wait                : wren_rts_name = "spi_wait";
-        wren                    : wren_rts_name = "wren";
-        wip_poll_send           : wren_rts_name = "wip_poll_send";
-        wip_poll_rd             : wren_rts_name = "wip_poll_rd";
-        wip_poll_wait           : wren_rts_name = "wip_poll_wait";
-        wip_poll_send_wait_done : wren_rts_name = "wip_poll_send_wait_done";
-        wip_poll_rd_wait_done   : wren_rts_name = "wip_poll_rd_wait_done";
-        err                     : wren_rts_name = "err";
+    //     // shared subroutines / error
+    //     send_opcode             : wip_rts_name = "send_opcode";
+    //     send_a1                 : wip_rts_name = "send_a1";
+    //     send_a2                 : wip_rts_name = "send_a2";
+    //     send_a3                 : wip_rts_name = "send_a3";
+    //     gap                     : wip_rts_name = "gap";
+    //     spi_wait                : wip_rts_name = "spi_wait";
+    //     wren                    : wip_rts_name = "wren";
+    //     wip_poll_send           : wip_rts_name = "wip_poll_send";
+    //     wip_poll_rd             : wip_rts_name = "wip_poll_rd";
+    //     wip_poll_wait           : wip_rts_name = "wip_poll_wait";
+    //     wip_poll_send_wait_done : wip_rts_name = "wip_poll_send_wait_done";
+    //     wip_poll_rd_wait_done   : wip_rts_name = "wip_poll_rd_wait_done";
+    //     err                     : wip_rts_name = "err";
 
-        default                 : wren_rts_name = "UNKNOWN";
-    endcase
+    //     default                 : wip_rts_name = "UNKNOWN";
+    // endcase
 
 
-    // opcode return-state name
-    case (opaddr_return_state)
-        // start up sequence
-        start                   : opa_rts_name = "start";
-        rst_ena                 : opa_rts_name = "rst_ena";
-        rst                     : opa_rts_name = "rst";
-        global_unlock           : opa_rts_name = "global_unlock";
-        chip_erase              : opa_rts_name = "chip_erase";
-        rd_sr2_send             : opa_rts_name = "rd_sr2_send";
-        rd_sr2_send_wait_done   : opa_rts_name = "rd_sr2_send_wait_done";
-        rd_sr2_rd_wait_done     : opa_rts_name = "rd_sr2_rd_wait_done";
-        rd_sr2_rd               : opa_rts_name = "rd_sr2_rd";
-        wr_sr2_opcode           : opa_rts_name = "wr_sr2_opcode";
-        wr_sr2_data             : opa_rts_name = "wr_sr2_data";
-        wr_sr2_data_wait_done        : opa_rts_name = "wr_sr2_data_wait_done";
-        // normal workflow
-        idle                    : opa_rts_name = "idle";
-        dummy                   : opa_rts_name = "dummy";
-        receive_data            : opa_rts_name = "receive_data";
-        send_data               : opa_rts_name = "send_data";
-        wait_done               : opa_rts_name = "wait_done";
+    // // wren return-state name
+    // case (wren_return_state)
+    //     // start up sequence
+    //     start                   : wren_rts_name = "start";
+    //     rst_ena                 : wren_rts_name = "rst_ena";
+    //     rst                     : wren_rts_name = "rst";
+    //     global_unlock           : wren_rts_name = "global_unlock";
+    //     chip_erase              : wren_rts_name = "chip_erase";
+    //     rd_sr2_send             : wren_rts_name = "rd_sr2_send";
+    //     rd_sr2_send_wait_done   : wren_rts_name = "rd_sr2_send_wait_done";
+    //     rd_sr2_rd_wait_done     : wren_rts_name = "rd_sr2_rd_wait_done";
+    //     rd_sr2_rd               : wren_rts_name = "rd_sr2_rd";
+    //     wr_sr2_opcode           : wren_rts_name = "wr_sr2_opcode";
+    //     wr_sr2_data             : wren_rts_name = "wr_sr2_data";
+    //     wr_sr2_data_wait_done        : wren_rts_name = "wr_sr2_data_wait_done";
+    //     // normal workflow
+    //     idle                    : wren_rts_name = "idle";
+    //     dummy                   : wren_rts_name = "dummy";
+    //     receive_data            : wren_rts_name = "receive_data";
+    //     send_data               : wren_rts_name = "send_data";
+    //     wait_done               : wren_rts_name = "wait_done";
 
-        // shared subroutines / error
-        send_opcode             : opa_rts_name = "send_opcode";
-        send_a1                 : opa_rts_name = "send_a1";
-        send_a2                 : opa_rts_name = "send_a2";
-        send_a3                 : opa_rts_name = "send_a3";
-        gap                     : opa_rts_name = "gap";
-        spi_wait                : opa_rts_name = "spi_wait";
-        wren                    : opa_rts_name = "wren";
-        wip_poll_send           : opa_rts_name = "wip_poll_send";
-        wip_poll_rd             : opa_rts_name = "wip_poll_rd";
-        wip_poll_wait           : opa_rts_name = "wip_poll_wait";
-        wip_poll_send_wait_done : opa_rts_name = "wip_poll_send_wait_done";
-        wip_poll_rd_wait_done   : opa_rts_name = "wip_poll_rd_wait_done";
-        err                     : opa_rts_name = "err";
+    //     // shared subroutines / error
+    //     send_opcode             : wren_rts_name = "send_opcode";
+    //     send_a1                 : wren_rts_name = "send_a1";
+    //     send_a2                 : wren_rts_name = "send_a2";
+    //     send_a3                 : wren_rts_name = "send_a3";
+        
+    //     gap                     : wren_rts_name = "gap";
+    //     spi_wait                : wren_rts_name = "spi_wait";
+    //     wren                    : wren_rts_name = "wren";
+    //     wip_poll_send           : wren_rts_name = "wip_poll_send";
+    //     wip_poll_rd             : wren_rts_name = "wip_poll_rd";
+    //     wip_poll_wait           : wren_rts_name = "wip_poll_wait";
+    //     wip_poll_send_wait_done : wren_rts_name = "wip_poll_send_wait_done";
+    //     wip_poll_rd_wait_done   : wren_rts_name = "wip_poll_rd_wait_done";
+    //     err                     : wren_rts_name = "err";
 
-        default                 : opa_rts_name = "UNKNOWN";
-    endcase
+    //     default                 : wren_rts_name = "UNKNOWN";
+    // endcase
+
+
+    // // opcode return-state name
+    // case (opaddr_return_state)
+    //     // start up sequence
+    //     start                   : opa_rts_name = "start";
+    //     rst_ena                 : opa_rts_name = "rst_ena";
+    //     rst                     : opa_rts_name = "rst";
+    //     global_unlock           : opa_rts_name = "global_unlock";
+    //     chip_erase              : opa_rts_name = "chip_erase";
+    //     rd_sr2_send             : opa_rts_name = "rd_sr2_send";
+    //     rd_sr2_send_wait_done   : opa_rts_name = "rd_sr2_send_wait_done";
+    //     rd_sr2_rd_wait_done     : opa_rts_name = "rd_sr2_rd_wait_done";
+    //     rd_sr2_rd               : opa_rts_name = "rd_sr2_rd";
+    //     wr_sr2_opcode           : opa_rts_name = "wr_sr2_opcode";
+    //     wr_sr2_data             : opa_rts_name = "wr_sr2_data";
+    //     wr_sr2_data_wait_done        : opa_rts_name = "wr_sr2_data_wait_done";
+    //     // normal workflow
+    //     idle                    : opa_rts_name = "idle";
+    //     dummy                   : opa_rts_name = "dummy";
+    //     receive_data            : opa_rts_name = "receive_data";
+    //     send_data               : opa_rts_name = "send_data";
+    //     wait_done               : opa_rts_name = "wait_done";
+
+    //     // shared subroutines / error
+    //     send_opcode             : opa_rts_name = "send_opcode";
+    //     send_a1                 : opa_rts_name = "send_a1";
+    //     send_a2                 : opa_rts_name = "send_a2";
+    //     send_a3                 : opa_rts_name = "send_a3";
+    //     gap                     : opa_rts_name = "gap";
+    //     spi_wait                : opa_rts_name = "spi_wait";
+    //     wren                    : opa_rts_name = "wren";
+    //     wip_poll_send           : opa_rts_name = "wip_poll_send";
+    //     wip_poll_rd             : opa_rts_name = "wip_poll_rd";
+    //     wip_poll_wait           : opa_rts_name = "wip_poll_wait";
+    //     wip_poll_send_wait_done : opa_rts_name = "wip_poll_send_wait_done";
+    //     wip_poll_rd_wait_done   : opa_rts_name = "wip_poll_rd_wait_done";
+    //     err                     : opa_rts_name = "err";
+
+    //     default                 : opa_rts_name = "UNKNOWN";
+    // endcase
         
     end
 

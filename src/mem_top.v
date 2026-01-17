@@ -100,7 +100,8 @@ module mem_top (
     wire cu_fsm_enc_type;
     wire [1:0] cu_fsm_opcode;
     wire [23:0] cu_fsm_address;
-
+    
+    wire fsm_cu_idle;
 
     mem_command_port cu(.clk(clk),.rst_n(rst_n),.in_bus_valid(VALID_IN),.in_bus_ready(READY),.in_bus_data(DATA_IN),
     .out_bus_data(DATA), .out_bus_ready(READY_IN), .out_bus_valid(VALID), .in_ack_bus_owned(ACK_READY), 
@@ -163,7 +164,7 @@ module mem_top (
     .in_fsm_done(fsm_cu_done),.out_fsm_enc_type(cu_fsm_enc_type),.out_fsm_opcode(cu_fsm_opcode),.out_address(cu_fsm_address),
     .in_start(fsm_spi_in_start),.r_w(fsm_spi_r_w),.quad_enable(fsm_spi_quad_enable),.in_spi_done(spi_fsm_done),
     .qed(fsm_spi_qed),.out_spi_valid(fsm_spi_valid),.out_spi_data(fsm_spi_data),.in_spi_ready(spi_fsm_ready),
-    .in_spi_valid(spi_fsm_valid),.in_spi_data(spi_fsm_data),.out_spi_ready(fsm_spi_ready),.err_flag(err)    
+    .in_spi_valid(spi_fsm_valid),.in_spi_data(spi_fsm_data),.out_spi_ready(fsm_spi_ready),.err_flag(err), .fsm_idle(fsm_cu_idle)    
     );
     // spi port
     // //---- Transaction FSM connections ----
