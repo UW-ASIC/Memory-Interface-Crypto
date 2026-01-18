@@ -74,7 +74,9 @@ module mem_command_port(
     wire rd = (state == PERFORM_TRANSFER) && ((!out_fsm_opcode[1]));
     assign opcode  = (state == IDLE && in_bus_valid) ? in_bus_data[1:0] : 2'b00 ;
     // combinational drive ready
-    assign out_bus_ready = (state == IDLE) || (state == PASS_CMD && counter < 23) || (wr && (!out_fsm_valid || in_fsm_ready) && !fsm_done_latch);
+    assign out_bus_ready = (state == IDLE) || (state == PASS_CMD && counter < 23) || 
+    (wr && (!out_fsm_valid || in_fsm_ready) && ( !fsm_done_latch ) );
+
     assign out_fsm_ready = rd && (!out_bus_valid || in_bus_ready);
     
     wire out_fsm_empty_next = !out_fsm_valid || in_fsm_ready;
@@ -155,7 +157,7 @@ module mem_command_port(
                             out_fsm_valid <= 1;
                             out_fsm_data  <= in_bus_data;
                         end
-                        if (fsm_done_latch) begin
+                        if (fsm_done_latch || in_fsm_done) begin
                             state <= IDLE;
                         end
                     end

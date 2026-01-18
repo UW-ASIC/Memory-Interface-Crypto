@@ -157,12 +157,12 @@ module mem_txn_fsm(
 
     // to be changed for back pressure
     // cu to fsm only high when idle or send data when spi is ready or the buffer is empty
-    assign out_cu_ready  = (state == idle) || (state == send_data && ((!out_spi_valid) || in_spi_ready));
+    assign out_cu_ready  = (state == idle) || (state == send_data && ((!out_spi_valid) || in_spi_ready) && total_bytes_left != 0);
     // spi to fsm only high when receiving data of single handshake state during start up or
     // receive data sates when cu is ready or buffer to cu is empty
     assign out_spi_ready = (state == rd_sr2_rd) || (state == wip_poll_rd) || (state == dummy)
     || (state == receive_data && (!out_cu_valid || in_cu_ready));
-    
+     
     wire cu_empty_next; // output to cu will be empty after this cycle in read flow
     assign cu_empty_next = !out_cu_valid || (out_cu_valid && in_cu_ready);
     always @(posedge clk or negedge rst_n) begin
