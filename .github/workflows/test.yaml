@@ -29,8 +29,8 @@ jobs:
           make cleanall
           make test_command_port
           make test_transaction_fsm
+          make test_spi_controller
           # TODO: Add these once they pass:
-          # make test_spi_controller
           # make test_mem_top (requires W25Q128JVxIM.v flash model)
           # make test_tt_toplevel
           # Check for failures in results.xml
