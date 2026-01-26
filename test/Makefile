@@ -64,9 +64,11 @@ TOPLEVEL ?= mem_vendor_test
 MODULE ?= test_mem_top
 
 # ============================================================================
-# Test Targets
+# Test Targets (only at top level, not in recursive calls)
 # ============================================================================
 .PHONY: test_command_port test_spi_controller test_transaction_fsm test_mem_top test_tt_toplevel all_tests cleanall
+
+ifeq ($(MAKELEVEL),0)
 
 test_command_port:
 	rm -rf sim_build
@@ -118,6 +120,8 @@ all_tests:
 cleanall:
 	rm -rf sim_build __pycache__
 	rm -f results.xml *.vcd
+
+endif
 
 # Include cocotb's make rules
 include $(shell cocotb-config --makefiles)/Makefile.sim
