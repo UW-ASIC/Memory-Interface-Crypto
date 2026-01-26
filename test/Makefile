@@ -3,16 +3,17 @@
 
 # ============================================================================
 # Usage:
-#   make test_command_port       - Run command port tests
-#   make test_spi_controller     - Run SPI controller tests
-#   make test_transaction_fsm    - Run transaction FSM tests
-#   make test_mem_top            - Run mem_top tests (needs flash model)
-#   make test_tt_toplevel        - Run TinyTapeout toplevel tests
-#   make all_tests               - Run all tests
-#   make cleanall                - Clean build artifacts
+#   make                         - Run default test (RTL: tt_toplevel)
+#   make test_command_port       - Run command port tests (RTL only)
+#   make test_spi_controller     - Run SPI controller tests (RTL only)
+#   make test_transaction_fsm    - Run transaction FSM tests (RTL only)
+#   make test_mem_top            - Run mem_top tests (RTL only, needs flash model)
+#   make test_tt_toplevel        - Run TinyTapeout toplevel tests (RTL only)
+#   make all_tests               - Run all RTL tests
+#   make clean                   - Clean build artifacts
 #
-# Gate-level simulation:
-#   make test_command_port GATES=yes
+# Gate-level simulation (tests synthesized top-level only):
+#   make GATES=yes
 #   Requires: PDK_ROOT env var, gate_level_netlist.v in test/
 # ============================================================================
 
@@ -27,34 +28,20 @@ PROJECT_SOURCES = mem_command_port.v \
                   mem_top.v \
                   tt_um_mem_toplevel.v
 
-ifneq ($(GATES),yes)
-
-# RTL simulation:
-SIM_BUILD = sim_build/rtl
-VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
-COMPILE_ARGS += -DSIMULATION
-
-else
-
-# Gate level simulation:
-SIM_BUILD = sim_build/gl
-COMPILE_ARGS += -DGL_TEST
-COMPILE_ARGS += -DFUNCTIONAL
-COMPILE_ARGS += -DUSE_POWER_PINS
-COMPILE_ARGS += -DSIM
-COMPILE_ARGS += -DUNIT_DELAY=\#1
-VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/primitives.v
-VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/sky130_fd_sc_hd.v
-
-# this gets copied in by the GDS action workflow
-VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
-
-endif
-
 # Allow sharing configuration between design and testbench via `include`:
 COMPILE_ARGS += -I$(SRC_DIR)
 
-# Default target for GL test (make GATES=yes)
+ifneq ($(GATES),yes)
+
+# ============================================================================
+# RTL simulation
+# ============================================================================
+SIM_BUILD = sim_build/rtl
+VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
+VERILOG_SOURCES += $(PWD)/tb_tt_um_mem_toplevel.v
+COMPILE_ARGS += -DSIMULATION
+
+# Default for RTL
 TOPLEVEL ?= tb
 MODULE ?= test_tt_um_mem_toplevel
 
@@ -98,6 +85,30 @@ test_tt_toplevel:
 
 all_tests: test_command_port test_spi_controller test_transaction_fsm test_mem_top test_tt_toplevel
 	@echo "All tests completed!"
+
+else
+
+# ============================================================================
+# Gate level simulation (can only test synthesized top-level)
+# ============================================================================
+SIM_BUILD = sim_build/gl
+COMPILE_ARGS += -DGL_TEST
+COMPILE_ARGS += -DFUNCTIONAL
+COMPILE_ARGS += -DUSE_POWER_PINS
+COMPILE_ARGS += -DSIM
+COMPILE_ARGS += -DUNIT_DELAY=\#1
+VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/primitives.v
+VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/sky130_fd_sc_hd.v
+VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
+VERILOG_SOURCES += $(PWD)/tb_tt_um_mem_toplevel.v
+
+# For GL, can only test the synthesized top-level module
+TOPLEVEL ?= tb
+MODULE ?= test_tt_um_mem_toplevel
+
+.PHONY: clean cleanall
+
+endif
 
 # Phony target for cleaning up
 clean::
