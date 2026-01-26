@@ -3,7 +3,7 @@ project:
   title:        "Crypto Accelerator Memory Interface"      # Project title
   author:       "UWASIC"      # Your name
   discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "Interfacing external memory with the rest of the cryotographic accelerator"      # One line description of what your project does
+  description:  "Interfacing external memory with the rest of the cryptographic accelerator"      # One line description of what your project does
   language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
   clock_hz:     0       # Clock frequency in Hz (or 0 if not applicable)
 
@@ -11,7 +11,7 @@ project:
   tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
-  top_module:  "tt_um_mem_toplevel.v"
+  top_module:  "tt_um_mem_toplevel"
 
   # List your project's source files here.
   # Source files must be in ./src and you must list each source file separately, one per line.
@@ -19,8 +19,8 @@ project:
   source_files:
     - mem_command_port.v
     - mem_spi_controller.v
-    - mem_status_poller.v
-    - mem_transaction_fsm.v
+    - mem_txn_fsm.v
+    - mem_top.v
     - tt_um_mem_toplevel.v
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
