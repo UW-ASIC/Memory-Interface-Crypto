@@ -1,6 +1,7 @@
 // ASSUME CLK 100MHZ
 
 `default_nettype none
+`timescale 1ns/1ps
 module mem_txn_fsm(
     input wire clk,
     input wire rst_n,

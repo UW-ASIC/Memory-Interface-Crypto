@@ -1,4 +1,5 @@
 `default_nettype none
+`timescale 1ns/1ps
 module mem_top (
     input wire clk,
     input wire rst_n,

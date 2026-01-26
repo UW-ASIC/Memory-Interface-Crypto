@@ -7,6 +7,7 @@
 
 */
 `default_nettype none
+`timescale 1ns/1ps
 module mem_command_port(
     input wire clk,
     input wire rst_n,

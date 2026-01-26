@@ -13,6 +13,7 @@ Clock Divider / Shifting FSM is already partially implemented by Ryan
 
 // sample on risedge shift on falledge
 `default_nettype none
+`timescale 1ns/1ps
 module mem_spi_controller (
     input wire clk, 
     input wire rst_n,
