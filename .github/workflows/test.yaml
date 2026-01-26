@@ -9,9 +9,12 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install iverilog
+      - name: Install Verilator
         shell: bash
-        run: sudo apt-get update && sudo apt-get install -y iverilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+          verilator --version
 
       # Set Python up and install cocotb
       - name: Setup python
