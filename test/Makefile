@@ -21,30 +21,22 @@ SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
 
-# Default source files
-SRC_FILES ?= mem_command_port.v mem_spi_controller.v mem_txn_fsm.v mem_top.v mem_vendor_test.v W25Q128JVxIM.v
+PROJECT_SOURCES = mem_command_port.v \
+                  mem_spi_controller.v \
+                  mem_txn_fsm.v \
+                  mem_top.v \
+                  tt_um_mem_toplevel.v
 
-# Testbench file (optional, for tt_toplevel)
-TB_FILE ?=
-
-# Include path
-COMPILE_ARGS += -I$(SRC_DIR)
-
-# ============================================================================
-# Gate Level vs RTL Simulation
-# ============================================================================
 ifneq ($(GATES),yes)
-# RTL simulation
+
+# RTL simulation:
 SIM_BUILD = sim_build/rtl
-VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(SRC_FILES))
-ifneq ($(TB_FILE),)
-VERILOG_SOURCES += $(PWD)/$(TB_FILE)
-endif
+VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
 COMPILE_ARGS += -DSIMULATION
+
 else
 
-
-# Gate level simulation
+# Gate level simulation:
 SIM_BUILD = sim_build/gl
 COMPILE_ARGS += -DGL_TEST
 COMPILE_ARGS += -DFUNCTIONAL
@@ -53,75 +45,63 @@ COMPILE_ARGS += -DSIM
 COMPILE_ARGS += -DUNIT_DELAY=\#1
 VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/primitives.v
 VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/sky130_fd_sc_hd.v
+
+# this gets copied in by the GDS action workflow
 VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
-ifneq ($(TB_FILE),)
-VERILOG_SOURCES += $(PWD)/$(TB_FILE)
-endif
+
 endif
 
-# Default toplevel and module (for direct 'make' invocation)
-TOPLEVEL ?= mem_vendor_test
-MODULE ?= test_mem_top
+# Allow sharing configuration between design and testbench via `include`:
+COMPILE_ARGS += -I$(SRC_DIR)
 
-# ============================================================================
-# Test Targets (only at top level, not in recursive calls)
-# ============================================================================
-.PHONY: test_command_port test_spi_controller test_transaction_fsm test_mem_top test_tt_toplevel all_tests cleanall
+# Default target for GL test (make GATES=yes)
+TOPLEVEL ?= tb
+MODULE ?= test_tt_um_mem_toplevel
 
-ifeq ($(MAKELEVEL),0)
+.PHONY: test_command_port test_spi_controller test_transaction_fsm test_mem_top test_tt_toplevel all_tests clean
 
 test_command_port:
-	rm -rf sim_build
-	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) \
-		TOPLEVEL=mem_command_port \
+	$(MAKE) clean
+	$(MAKE) sim \
 		MODULE=test_mem_command_port \
-		SRC_FILES="mem_command_port.v"
+		TOPLEVEL=mem_command_port \
+		VERILOG_SOURCES="$(SRC_DIR)/mem_command_port.v"
 
 test_spi_controller:
-	rm -rf sim_build
-	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) \
-		TOPLEVEL=mem_spi_controller \
+	$(MAKE) clean
+	$(MAKE) sim \
 		MODULE=test_mem_spi_controller \
-		SRC_FILES="mem_spi_controller.v"
+		TOPLEVEL=mem_spi_controller \
+		VERILOG_SOURCES="$(SRC_DIR)/mem_spi_controller.v"
 
 test_transaction_fsm:
-	rm -rf sim_build
-	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) \
-		TOPLEVEL=mem_txn_fsm \
+	$(MAKE) clean
+	$(MAKE) sim \
 		MODULE=test_mem_transaction_fsm \
-		SRC_FILES="mem_txn_fsm.v"
+		TOPLEVEL=mem_txn_fsm \
+		VERILOG_SOURCES="$(SRC_DIR)/mem_txn_fsm.v" \
+		COMPILE_ARGS="$(COMPILE_ARGS) -DSIMULATION"
 
 test_mem_top:
-	rm -rf sim_build
-	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) \
-		TOPLEVEL=mem_vendor_test \
+	$(MAKE) clean
+	$(MAKE) sim \
 		MODULE=test_mem_top \
-		SRC_FILES="mem_command_port.v mem_spi_controller.v mem_txn_fsm.v mem_top.v mem_vendor_test.v W25Q128JVxIM.v"
+		TOPLEVEL=mem_vendor_test \
+		VERILOG_SOURCES="$(SRC_DIR)/mem_command_port.v $(SRC_DIR)/mem_spi_controller.v $(SRC_DIR)/mem_txn_fsm.v $(SRC_DIR)/mem_top.v $(SRC_DIR)/mem_vendor_test.v $(SRC_DIR)/W25Q128JVxIM.v"
 
 test_tt_toplevel:
-	rm -rf sim_build
-	$(MAKE) -f $(firstword $(MAKEFILE_LIST)) \
-		TOPLEVEL=tb \
+	$(MAKE) clean
+	$(MAKE) sim \
 		MODULE=test_tt_um_mem_toplevel \
-		SRC_FILES="mem_command_port.v mem_spi_controller.v mem_txn_fsm.v mem_top.v tt_um_mem_toplevel.v" \
-		TB_FILE="tb_tt_um_mem_toplevel.v"
+		TOPLEVEL=tb \
+		VERILOG_SOURCES="$(SRC_DIR)/mem_command_port.v $(SRC_DIR)/mem_spi_controller.v $(SRC_DIR)/mem_txn_fsm.v $(SRC_DIR)/mem_top.v $(SRC_DIR)/tt_um_mem_toplevel.v $(PWD)/tb_tt_um_mem_toplevel.v"
 
-all_tests:
-	@echo "Running test_command_port..."
-	$(MAKE) test_command_port
-	@echo "Running test_spi_controller..."
-	$(MAKE) test_spi_controller
-	@echo "Running test_transaction_fsm..."
-	$(MAKE) test_transaction_fsm
-	@echo "Running test_mem_top..."
-	$(MAKE) test_mem_top
+all_tests: test_command_port test_spi_controller test_transaction_fsm test_mem_top test_tt_toplevel
 	@echo "All tests completed!"
 
-cleanall:
-	rm -rf sim_build __pycache__
-	rm -f results.xml *.vcd
+# Phony target for cleaning up
+clean::
+	rm -rf sim_build results.xml *.vcd __pycache__
 
-endif
-
-# Include cocotb's make rules
+# include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
