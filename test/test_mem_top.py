@@ -125,7 +125,7 @@ from cocotb.triggers import (
     with_timeout,
 )
 from cocotb.utils import get_sim_time
-from cocotb.triggers import SimTimeoutError
+from cocotb.result import SimTimeoutError
 from cocotb.types import Logic
 
 RD_DUMMY = 8
@@ -211,7 +211,7 @@ async def SPI_no_addr(dut):
             await FallingEdge(dut.SCLK)
             await RisingEdge(dut.SCLK)
             opcode = (opcode << 1) | int(dut.IO0.value)
-        t = get_sim_time(unit="ns")
+        t = get_sim_time(units="ns")
         dut._log.info(f"[{t} ns] Opcode {opcode:#02x}")
         return opcode
 
@@ -447,7 +447,7 @@ async def rst(dut):
     # tt output ena  
     assert int(dut.uio_oe.value) == 0b1101, f"uio_oe expected 0x0 got {int(dut.uio_oe.value):#04b}"
     
-    t = get_sim_time(unit="ns")
+    t = get_sim_time(units="ns")
     dut._log.info(f"[{t} ns] IO check complete")
     # start up flow opcode check
     # coroutine spi only di do
