@@ -9,9 +9,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install iverilog
+      - name: Install Verilator
         shell: bash
-        run: sudo apt-get update && sudo apt-get install -y iverilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git help2man perl python3 make autoconf g++ flex bison ccache libgoogle-perftools-dev numactl perl-doc libfl2 libfl-dev zlib1g zlib1g-dev
+          git clone https://github.com/verilator/verilator.git --depth 1 --branch v5.036
+          cd verilator
+          autoconf
+          ./configure
+          make -j$(nproc)
+          sudo make install
+          verilator --version
 
       # Set Python up and install cocotb
       - name: Setup python
@@ -29,8 +38,8 @@ jobs:
           make cleanall
           make test_command_port
           make test_transaction_fsm
+          make test_spi_controller
           # TODO: Add these once they pass:
-          # make test_spi_controller
           # make test_mem_top (requires W25Q128JVxIM.v flash model)
           # make test_tt_toplevel
           # Check for failures in results.xml

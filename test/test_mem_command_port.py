@@ -46,9 +46,9 @@ from cocotb.triggers import (
     Timer,
     ClockCycles,
     with_timeout,
+    SimTimeoutError,
 )
-from cocotb.result import SimTimeoutError
-from cocotb.utils import get_sim_time
+from cocotb.simtime import get_sim_time
 
 RD_KEY_AES_BYTES = 32
 RD_TEXT_AES_BYTES = 16

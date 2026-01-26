@@ -123,9 +123,9 @@ from cocotb.triggers import (
     Timer,
     ClockCycles,
     with_timeout,
+    SimTimeoutError,
 )
-from cocotb.utils import get_sim_time
-from cocotb.result import SimTimeoutError
+from cocotb.simtime import get_sim_time
 from cocotb.types import Logic
 
 RD_DUMMY = 8

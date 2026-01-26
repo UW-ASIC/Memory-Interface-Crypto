@@ -18,9 +18,13 @@
 # ============================================================================
 
 # Defaults
-SIM ?= icarus
+SIM ?= verilator
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
+
+# Verilator trace options
+EXTRA_ARGS += --trace
+EXTRA_ARGS += --trace-structs
 
 PROJECT_SOURCES = mem_command_port.v \
                   mem_spi_controller.v \
@@ -67,7 +71,7 @@ test_transaction_fsm:
 		MODULE=test_mem_transaction_fsm \
 		TOPLEVEL=mem_txn_fsm \
 		VERILOG_SOURCES="$(SRC_DIR)/mem_txn_fsm.v" \
-		COMPILE_ARGS="$(COMPILE_ARGS) -DSIMULATION"
+		EXTRA_ARGS="--trace --trace-structs -DSIMULATION"
 
 test_mem_top:
 	$(MAKE) clean
