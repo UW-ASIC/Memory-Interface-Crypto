@@ -58,7 +58,7 @@ COMPILE_ARGS += -I$(SRC_DIR)
 TOPLEVEL ?= tb
 MODULE ?= test_tt_um_mem_toplevel
 
-.PHONY: test_command_port test_spi_controller test_transaction_fsm test_mem_top test_tt_toplevel all_tests clean
+.PHONY: test_command_port test_spi_controller test_transaction_fsm test_mem_top test_tt_toplevel all_tests clean cleanall
 
 test_command_port:
 	$(MAKE) clean
@@ -102,6 +102,8 @@ all_tests: test_command_port test_spi_controller test_transaction_fsm test_mem_t
 # Phony target for cleaning up
 clean::
 	rm -rf sim_build results.xml *.vcd __pycache__
+
+cleanall: clean
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
