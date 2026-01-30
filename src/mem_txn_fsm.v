@@ -965,6 +965,6 @@ module mem_txn_fsm(
     //     default                 : opa_rts_name = "UNKNOWN";
     // endcase
         
-    end
+    // end
 
 endmodule
