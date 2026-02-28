@@ -39,16 +39,4 @@ async def test_project(dut):
     assert True
     
     # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
-
-@cocotb.test()
-async def test_rd_key():
-    pass
-
-@cocotb.test()
-async def test_rd_text():
-    pass
-
-@cocotb.test()
-async def test_wr_res():
-    pass
+    # one or more clock cycles, and asserting the expected output values.pass
