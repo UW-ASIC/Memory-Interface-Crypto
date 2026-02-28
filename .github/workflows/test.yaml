@@ -41,7 +41,7 @@ jobs:
           make test_spi_controller
           # TODO: Add these once they pass:
           # make test_mem_top (requires W25Q128JVxIM.v flash model)
-          # make test_tt_toplevel
+          make test_tt_toplevel
           # Check for failures in results.xml
           ! grep failure results.xml
 
