@@ -25,6 +25,8 @@ SRC_DIR = $(PWD)/../src
 # Verilator trace options
 EXTRA_ARGS += --trace
 EXTRA_ARGS += --trace-structs
+#allowed timing delay in verilator
+EXTRA_ARGS += --timing
 
 PROJECT_SOURCES = mem_command_port.v \
                   mem_spi_controller.v \
