@@ -25,8 +25,7 @@ SRC_DIR = $(PWD)/../src
 # Verilator trace options
 EXTRA_ARGS += --trace
 EXTRA_ARGS += --trace-structs
-#allowed timing delay in verilator
-EXTRA_ARGS += --timing
+
 
 PROJECT_SOURCES = mem_command_port.v \
                   mem_spi_controller.v \
@@ -81,13 +80,14 @@ test_mem_top:
 		MODULE=test_mem_top \
 		TOPLEVEL=mem_vendor_test \
 		VERILOG_SOURCES="$(SRC_DIR)/mem_command_port.v $(SRC_DIR)/mem_spi_controller.v $(SRC_DIR)/mem_txn_fsm.v $(SRC_DIR)/mem_top.v $(SRC_DIR)/mem_vendor_test.v $(SRC_DIR)/W25Q128JVxIM.v"
-
+#timing delayed in verilator
 test_tt_toplevel:
 	$(MAKE) clean
 	$(MAKE) sim \
 		MODULE=test_tt_um_mem_toplevel \
 		TOPLEVEL=tb \
-		VERILOG_SOURCES="$(SRC_DIR)/mem_command_port.v $(SRC_DIR)/mem_spi_controller.v $(SRC_DIR)/mem_txn_fsm.v $(SRC_DIR)/mem_top.v $(SRC_DIR)/tt_um_mem_toplevel.v $(PWD)/tb_tt_um_mem_toplevel.v"
+		VERILOG_SOURCES="$(SRC_DIR)/mem_command_port.v $(SRC_DIR)/mem_spi_controller.v $(SRC_DIR)/mem_txn_fsm.v $(SRC_DIR)/mem_top.v $(SRC_DIR)/tt_um_mem_toplevel.v $(PWD)/tb_tt_um_mem_toplevel.v"\
+		EXTRA_ARGS="--trace --trace-structs --timing"
 
 all_tests: test_command_port test_spi_controller test_transaction_fsm test_mem_top test_tt_toplevel
 	@echo "All tests completed!"
