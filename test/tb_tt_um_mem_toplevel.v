@@ -46,8 +46,8 @@ module tb ();
       .rst_n  (rst_n)
   );
 
-  // clock generation
   initial clk = 1'b0;
+   //100mhz
   always #5 clk = ~clk;
 
 endmodule
