@@ -42,8 +42,6 @@ module mem_command_port(
 );
 
     localparam MEM_ID = 2'b00;
-    localparam SHA_ID = 2'b01;
-    localparam AES_ID = 2'b10;
 
     localparam RD_KEY = 2'b00;
     localparam RD_TEXT = 2'b01;
