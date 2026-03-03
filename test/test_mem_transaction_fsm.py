@@ -431,7 +431,7 @@ async def rst(dut):
     # fsm /bus data path emulating
     dut.in_cu_valid.value = 0
     dut.in_cu_data.value = 0
-    dut.out_fsm_enc_type.value = 0
+    # dut.out_fsm_enc_type.value = 0
     dut.out_address.value = 0   
     dut.in_spi_done.value = 0
     dut.in_spi_ready.value = 1
