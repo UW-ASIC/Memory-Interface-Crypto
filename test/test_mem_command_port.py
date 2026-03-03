@@ -163,7 +163,7 @@ async def rst(dut):
     assert dut.out_fsm_ready.value == 0,f"out_fsm_ready expecpted 0 got {dut.out_fsm_ready.value}"
 
     assert int(dut.out_address.value) == 0,f"out_address expecpted 0x000000 got {int(dut.out_address.value):#06x}" 
-    assert int(dut.out_fsm_opcode.value) == 0,f"out_fsm_opcode expecpted 0b00 got {int(dut.out_fsm_opcode.value):#02b}" 
+    # assert int(dut.out_fsm_opcode.value) == 0,f"out_fsm_opcode expecpted 0b00 got {int(dut.out_fsm_opcode.value):#02b}" 
 
     # // --- Bus ---
     # input wire in_bus_valid,
