@@ -78,7 +78,7 @@ module mem_spi_controller (
     reg [7:0] rx_shift  = 8'd0, n_rx_shift  = 8'd0; // rx shift reg
     reg rx_full, n_rx_full; // rx shift is full
 
-    reg active = 1'b0; // 1 = CS low, transaction in progress
+    reg active = 1'b0, n_active = 1'b0; // 1 = CS low, transaction in progress
 
     assign out_tx_ready = ~have_tx_byte; // comb drive tx ready
 
