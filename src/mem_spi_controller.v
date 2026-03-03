@@ -78,7 +78,7 @@ module mem_spi_controller (
     reg [7:0] rx_shift  = 8'd0, n_rx_shift  = 8'd0; // rx shift reg
     reg rx_full, n_rx_full; // rx shift is full
 
-    reg active = 1'b0, n_active = 1'b0; // 1 = CS low, transaction in progress
+    reg active = 1'b0, n_active; // 1 = CS low, transaction in progress
 
     assign out_tx_ready = ~have_tx_byte; // comb drive tx ready
 
@@ -110,7 +110,6 @@ module mem_spi_controller (
             t_met        <= 1'b0;
 
             internal_rw  <= 1'b0;
-            internal_quad<= 1'b0;
 
             tx_shift     <= 8'h00;
             have_tx_byte <= 1'b0;
@@ -140,7 +139,6 @@ module mem_spi_controller (
             t_met        <= n_t_met;
 
             internal_rw  <= n_internal_rw;
-            internal_quad<= n_internal_quad;
 
             tx_shift     <= n_tx_shift;
             have_tx_byte <= n_have_tx_byte;
@@ -171,7 +169,6 @@ module mem_spi_controller (
         n_t_met         = t_met;
 
         n_internal_rw   = internal_rw;
-        n_internal_quad = internal_quad;
 
         n_tx_shift      = tx_shift;
         n_have_tx_byte  = have_tx_byte;
