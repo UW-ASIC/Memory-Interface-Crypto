@@ -95,20 +95,15 @@ module mem_top (
     wire fsm_cu_ready;
     wire [7:0] fsm_cu_data; 
     wire fsm_cu_done;   
-    // output reg out_fsm_enc_type,
-    // output reg [1:0] out_fsm_opcode,
     // output reg [23:0] out_address
-    wire cu_fsm_enc_type;
-    wire [1:0] cu_fsm_opcode;
+
     wire [23:0] cu_fsm_address;
     
-    wire fsm_cu_idle;
-
     mem_command_port cu(.clk(clk),.rst_n(rst_n),.in_bus_valid(VALID_IN),.in_bus_ready(READY),.in_bus_data(DATA_IN),
     .out_bus_data(DATA), .out_bus_ready(READY_IN), .out_bus_valid(VALID), .in_ack_bus_owned(ACK_READY), 
     .out_ack_bus_request(ACK_VALID), .out_ack_bus_id(MODULE_SOURCE_ID), .out_fsm_valid(cu_fsm_valid), .out_fsm_ready(cu_fsm_ready),
     .out_fsm_data(cu_fsm_data), .in_fsm_ready(fsm_cu_ready), .in_fsm_valid(fsm_cu_valid), .in_fsm_data(fsm_cu_data),
-    .in_fsm_done(fsm_cu_done), .out_fsm_enc_type(cu_fsm_enc_type), .out_fsm_opcode(cu_fsm_opcode), .out_address(cu_fsm_address)
+    .in_fsm_done(fsm_cu_done), .out_address(cu_fsm_address)
      );
     //  fsm port
     // // CU
@@ -162,10 +157,10 @@ module mem_top (
 
     mem_txn_fsm fsm(.clk(clk),.rst_n(rst_n),.out_cu_ready(fsm_cu_ready),.in_cu_valid(cu_fsm_valid),
     .in_cu_data(cu_fsm_data),.in_cu_ready(cu_fsm_ready),.out_cu_valid(fsm_cu_valid),.out_cu_data(fsm_cu_data),
-    .in_fsm_done(fsm_cu_done),.out_fsm_enc_type(cu_fsm_enc_type),.out_fsm_opcode(cu_fsm_opcode),.out_address(cu_fsm_address),
+    .in_fsm_done(fsm_cu_done),.out_address(cu_fsm_address),
     .in_start(fsm_spi_in_start),.r_w(fsm_spi_r_w),.quad_enable(fsm_spi_quad_enable),.in_spi_done(spi_fsm_done),
     .qed(fsm_spi_qed),.out_spi_valid(fsm_spi_valid),.out_spi_data(fsm_spi_data),.in_spi_ready(spi_fsm_ready),
-    .in_spi_valid(spi_fsm_valid),.in_spi_data(spi_fsm_data),.out_spi_ready(fsm_spi_ready),.err_flag(err), .fsm_idle(fsm_cu_idle)    
+    .in_spi_valid(spi_fsm_valid),.in_spi_data(spi_fsm_data),.out_spi_ready(fsm_spi_ready),.err_flag(err)    
     );
     // spi port
     // //---- Transaction FSM connections ----

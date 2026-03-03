@@ -17,11 +17,9 @@ module mem_txn_fsm(
 
     output reg in_fsm_done, // spi side finished
     
-    input wire out_fsm_enc_type,
-    input wire [1:0] out_fsm_opcode,
+    // input wire out_fsm_enc_type,
+    // input wire [1:0] out_fsm_opcode,
     input wire [23:0] out_address,
-
-    output reg fsm_idle,
 
     // QSPI
 
@@ -122,9 +120,9 @@ module mem_txn_fsm(
     localparam [2:0] cpe = 3'd4;  // chip erase   
 
     // module id
-    localparam mem_id = 2'd0, sha_id = 2'd1, aes_id = 2'd2;
+    localparam [1:0] aes_id = 2'd2;
     // cu opcode
-    localparam RD_KEY = 2'b00, RD_TEXT = 2'b01, WR_RES = 2'b10, INVALID = 2'b11;
+    localparam [1:0] RD_KEY = 2'b00, RD_TEXT = 2'b01, WR_RES = 2'b10, INVALID = 2'b11;
 
     // current state
     reg [5:0] state = 6'd0 ,next_state = 6'd0;
@@ -246,7 +244,6 @@ module mem_txn_fsm(
         // signal to cu
         in_fsm_done = (state == send_data && (total_bytes_left == 1 && in_cu_valid && out_cu_ready))
         || (state == receive_data && (total_bytes_left == 1 && out_spi_ready && in_spi_valid));
-        fsm_idle = (state == idle);
 
         // in_fsm_done = (state == gap && gap_return_state == idle && cu_empty_next) || (state == wait_done && cu_empty_next) 
         // || (state == send_data && (total_bytes_left == 1 && in_cu_valid && out_cu_ready)) || (state == send_data && total_bytes_left == 0);

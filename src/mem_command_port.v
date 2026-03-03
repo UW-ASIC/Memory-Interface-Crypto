@@ -1,5 +1,5 @@
 /* 
-1.     output reg [2:0] out_fsm_opcode to output reg [1:0] out_fsm_opcode,
+1.     output reg [2:0] fsm_opcode to output reg [1:0] fsm_opcode,
 2.     ready: combinational driven by next chain ready
 3.     wire [2:0] dest_id = in_bus_data[5:4]; to wire [1:0] dest_id = in_bus_data[5:4];
 4.     update forwarding logic: only forward when output valid is low(empty)/downstream ready is high
@@ -36,8 +36,8 @@ module mem_command_port(
     input wire [7:0] in_fsm_data,
     input wire in_fsm_done,
     
-    output reg out_fsm_enc_type,
-    output reg [1:0] out_fsm_opcode,
+    // output reg out_fsm_enc_type,
+    // output reg [1:0] fsm_opcode,
     output reg [23:0] out_address
 );
 
@@ -57,13 +57,14 @@ module mem_command_port(
     localparam TRY_ACK = 4'h4;
     localparam ACK_RECEIVED = 4'h5;
 
+    reg [1:0] fsm_opcode = 0;
 
     reg [3:0] state = 0;
     reg [7:0] counter = 0;
 
     reg fsm_done_latch = 0; // in fsm done latch and only clear in idle and reset
     reg [7:0] internal_opcode = 0; // reg to hold internal opcode
-    wire enc_dec = in_bus_data[7];
+    // wire enc_dec = in_bus_data[7];
     // wire [1:0] dest_id = in_bus_data[5:4];
     // wire [1:0] src_id = in_bus_data[3:2];
     // wire [1:0] opcode = in_bus_data[1:0];
@@ -71,8 +72,8 @@ module mem_command_port(
     wire [1:0] src_id = in_bus_data[3:2];
     wire [1:0] opcode;
     // mode
-    wire wr = (state == PERFORM_TRANSFER) && (out_fsm_opcode[1]);
-    wire rd = (state == PERFORM_TRANSFER) && ((!out_fsm_opcode[1]));
+    wire wr = (state == PERFORM_TRANSFER) && (fsm_opcode[1]);
+    wire rd = (state == PERFORM_TRANSFER) && ((!fsm_opcode[1]));
     assign opcode  = (state == IDLE && in_bus_valid) ? in_bus_data[1:0] : 2'b00 ;
     // combinational drive ready
     assign out_bus_ready = (state == IDLE) || (state == PASS_CMD && counter < 23) || 
@@ -80,7 +81,7 @@ module mem_command_port(
 
     assign out_fsm_ready = rd && (!out_bus_valid || in_bus_ready);
     
-    wire out_fsm_empty_next = !out_fsm_valid || in_fsm_ready;
+    // wire out_fsm_empty_next = !out_fsm_valid || in_fsm_ready;
     wire out_bus_empty_next = !out_bus_valid || in_bus_ready;
 
     wire bus_fr_wr = wr && in_bus_valid && out_bus_ready;
@@ -99,8 +100,8 @@ module mem_command_port(
             counter <= 0;
             state <= IDLE;
             out_address <= 0;
-            out_fsm_opcode<=0;
-            out_fsm_enc_type <= 0;
+            fsm_opcode<=0;
+            // out_fsm_enc_type <= 0;
             internal_opcode <= 0;
         end else begin
             case(state)
@@ -120,8 +121,8 @@ module mem_command_port(
                             end
                         default: state <= IDLE;
                         endcase
-                        out_fsm_opcode <= opcode;
-                        out_fsm_enc_type <= enc_dec;
+                        fsm_opcode <= opcode;
+                        // out_fsm_enc_type <= enc_dec;
                         internal_opcode <= in_bus_data;
                     end
                 end
@@ -148,7 +149,7 @@ module mem_command_port(
                 end
                 PERFORM_TRANSFER: begin
                     // bus - cu - fsm
-                    if (out_fsm_opcode == WR_RES) begin
+                    if (fsm_opcode == WR_RES) begin
                         // only accept if output to fsm is empty or fsm ready
                         if (fsm_fr_wr && !bus_fr_wr) begin
                             out_fsm_valid <= 0;
@@ -163,7 +164,7 @@ module mem_command_port(
                         end
                     end
                     // fsm - cu - bus   
-                    else if (!out_fsm_opcode[1])begin
+                    else if (!fsm_opcode[1])begin
                         // only accept if output to bus is empty or bus ready
                         if (bus_fr_rd && !fsm_fr_rd) begin
                             out_bus_valid <= 0;
